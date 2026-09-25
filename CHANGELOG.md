@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Added a ChatGPT / Codex Image connection that generates one text-to-image result with the local `codex login` session, without an OpenAI API key. Its connection check validates the login without generating an image.
 - Consolidated root coding-agent guidance in `AGENTS.md` and updated contributor and reviewer references after removing the duplicate `CLAUDE.md`. Removed the obsolete `MARI_SUGGESTION_CHIPS_TASK.md` implementation brief (#6504).
 
 ## [2.4.6]

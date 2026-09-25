@@ -680,6 +680,9 @@ export const VIDEO_GENERATION_SOURCES: VideoGenSource[] = [
   },
 ];
 
+/** Model used by Codex's built-in ChatGPT image generation path. */
+export const CODEX_CHATGPT_IMAGE_MODEL = "gpt-image-2";
+
 export const IMAGE_GENERATION_SOURCES: ImageGenSource[] = [
   {
     id: "openai",
@@ -687,6 +690,13 @@ export const IMAGE_GENERATION_SOURCES: ImageGenSource[] = [
     description: "DALL-E 2, DALL-E 3, and GPT Image via the OpenAI API.",
     defaultBaseUrl: "https://api.openai.com/v1",
     requiresApiKey: true,
+  },
+  {
+    id: "codex_chatgpt",
+    name: "ChatGPT / Codex Image",
+    description: "GPT Image using your local codex login and ChatGPT/Codex usage allowance.",
+    defaultBaseUrl: "",
+    requiresApiKey: false,
   },
   {
     id: "stability",
@@ -991,6 +1001,7 @@ export function inferImageSource(model: string, baseUrl: string): string {
   }
   if (
     m === "openai" ||
+    m === "codex_chatgpt" ||
     m === "stability" ||
     m === "togetherai" ||
     m === "arli" ||

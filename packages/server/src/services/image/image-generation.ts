@@ -64,6 +64,8 @@ import {
 import { buildVeniceApiUrl, buildVeniceImageRequest, parseVeniceImageResponse } from "./venice-image.js";
 import { buildZaiImageRequest, buildZaiImageUrl, parseZaiImageUrl } from "./zai-image.js";
 import { buildAtlasCloudImageRequest, runAtlasCloudPrediction } from "../media/atlas-cloud.js";
+import { OPENAI_CHATGPT_CODEX_BASE_URL } from "../llm/openai-chatgpt-auth.js";
+import { generateCodexChatGPTImage } from "./openai-chatgpt-image.js";
 
 // sharp is an optional native module (no prebuilds on some platforms like Termux).
 // Lazy-load so the server boots even when sharp is missing. The Draw Things img2img
@@ -191,6 +193,7 @@ export interface ImageGenResult {
 
 const EXPLICIT_IMAGE_SOURCES = new Set([
   "openai",
+  "codex_chatgpt",
   "arli",
   "nanogpt",
   "openrouter",
@@ -217,7 +220,12 @@ function normalizeExplicitImageSource(serviceHint: string): string {
   return EXPLICIT_IMAGE_SOURCES.has(normalized) ? normalized : "";
 }
 
-function resolveImageBackend(source: string, baseUrl: string, serviceHint: string, requestModel?: string): string {
+export function resolveImageBackend(
+  source: string,
+  baseUrl: string,
+  serviceHint: string,
+  requestModel?: string,
+): string {
   const inferredSource = inferImageSource(requestModel || source, baseUrl);
   const explicitSource = normalizeExplicitImageSource(serviceHint);
 
@@ -284,7 +292,7 @@ export async function generateImage(
   request: ImageGenRequest,
 ): Promise<ImageGenResult> {
   return runMediaGenerationRequest({
-    connectionKey: `image:${baseUrl || source}`,
+    connectionKey: `image:${serviceHint === "codex_chatgpt" ? OPENAI_CHATGPT_CODEX_BASE_URL : baseUrl || source}`,
     queue: false,
     signal: request.signal,
     priority: request.admissionMode?.kind === "background" ? "background" : "foreground",
@@ -300,7 +308,8 @@ async function generateImageUncapped(
   request: ImageGenRequest,
 ): Promise<ImageGenResult> {
   const resolvedSource = resolveImageBackend(source, baseUrl, serviceHint, request.model);
-  const normalizedBaseUrl = normalizeImageUrl(baseUrl);
+  const normalizedBaseUrl =
+    resolvedSource === "codex_chatgpt" ? OPENAI_CHATGPT_CODEX_BASE_URL : normalizeImageUrl(baseUrl);
   // Providers without native captions still need the identities and current outfits
   // the prompt writer put there, including when a NovelAI request falls back.
   const flattenedPrompt =
@@ -324,7 +333,10 @@ async function generateImageUncapped(
     const physicalRequest = () =>
       withImageGenerationDeadline(request, generationTimeoutMs, async (signal) => {
         const allowLocalUrls =
-          request.allowLocalUrls ?? (await shouldAllowLocalUrlsForImageConnection(normalizedBaseUrl, resolvedSource));
+          resolvedSource === "codex_chatgpt"
+            ? false
+            : (request.allowLocalUrls ??
+              (await shouldAllowLocalUrlsForImageConnection(normalizedBaseUrl, resolvedSource)));
         const scopedRequest = {
           ...request,
           prompt: flattenedPrompt ?? request.prompt,
@@ -338,6 +350,8 @@ async function generateImageUncapped(
         switch (resolvedSource) {
           case "openai":
             return generateOpenAI(normalizedBaseUrl, apiKey, scopedRequest);
+          case "codex_chatgpt":
+            return generateCodexChatGPTImage(scopedRequest);
           case "arli":
             return generateArli(normalizedBaseUrl, apiKey, scopedRequest);
           case "nanogpt":

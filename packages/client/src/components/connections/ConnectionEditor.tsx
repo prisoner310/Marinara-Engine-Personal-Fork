@@ -78,6 +78,7 @@ import {
   LOCAL_SIDECAR_CONNECTION_ID,
   MODEL_LISTS,
   IMAGE_GENERATION_SOURCES,
+  CODEX_CHATGPT_IMAGE_MODEL,
   ZAI_IMAGE_MODELS,
   VIDEO_GENERATION_SOURCES,
   inferImageSource,
@@ -428,10 +429,11 @@ export function ConnectionEditor() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const baseUrlValidation = useMemo(
     () =>
-      isLocalAuthConnectionProvider(localProvider)
+      isLocalAuthConnectionProvider(localProvider) ||
+      (localProvider === "image_generation" && (localImageGenerationSource || localImageService) === "codex_chatgpt")
         ? { value: "", error: null }
         : normalizeEndpointUrlInput(localBaseUrl, "Base URL"),
-    [localBaseUrl, localProvider],
+    [localBaseUrl, localProvider, localImageGenerationSource, localImageService],
   );
   const embeddingBaseUrlValidation = useMemo(
     () => normalizeEndpointUrlInput(localEmbeddingBaseUrl, "Embedding endpoint URL"),
@@ -623,6 +625,7 @@ export function ConnectionEditor() {
     localProvider === "image_generation"
       ? localImageGenerationSource || localImageService || effectiveImageGenerationSource
       : "";
+  const isCodexImageService = localProvider === "image_generation" && selectedImageService === "codex_chatgpt";
   const selectedImageDefaultsService = imageSourceToDefaultsService(selectedImageService);
   const supportsGptImageQuality =
     localProvider === "image_generation" && selectedImageService === "openai" && isOpenAIGptImageModel(localModel);
@@ -800,12 +803,14 @@ export function ConnectionEditor() {
     const canTreatAsLocalEndpoint = canProviderTreatAsLocalEndpoint(localProvider);
     const existingEmbeddingModel = (conn as { embeddingModel?: string | null } | undefined)?.embeddingModel ?? "";
     const existingEmbeddingBaseUrl = (conn as { embeddingBaseUrl?: string | null } | undefined)?.embeddingBaseUrl ?? "";
-    const normalizedModel = normalizeGrokCliEditorModel(localProvider, localModel);
+    const normalizedModel = isCodexImageService
+      ? CODEX_CHATGPT_IMAGE_MODEL
+      : normalizeGrokCliEditorModel(localProvider, localModel);
     const payload: Record<string, unknown> = {
       id: connectionDetailId,
       name: localName,
       provider: localProvider,
-      baseUrl: isLocalAuthProvider ? "" : baseUrlValidation.value,
+      baseUrl: isLocalAuthProvider || isCodexImageService ? "" : baseUrlValidation.value,
       model: normalizedModel,
       maxContext: localMaxContext,
       maxParallelJobs: localMaxParallelJobs,
@@ -847,7 +852,7 @@ export function ConnectionEditor() {
       audioMusic: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioMusic : false,
     };
     // Only send API key if user typed a new one
-    if (isLocalAuthProvider) {
+    if (isLocalAuthProvider || isCodexImageService) {
       payload.apiKey = "";
     } else if (localApiKey.trim()) {
       payload.apiKey = localApiKey;
@@ -894,7 +899,7 @@ export function ConnectionEditor() {
         });
       }
       await updateConnection.mutateAsync(payload as { id: string } & Record<string, unknown>);
-      if (isLocalAuthProvider && localBaseUrl) {
+      if ((isLocalAuthProvider || isCodexImageService) && localBaseUrl) {
         setLocalBaseUrl("");
       } else if (baseUrlValidation.value !== localBaseUrl.trim()) {
         setLocalBaseUrl(baseUrlValidation.value);
@@ -954,6 +959,7 @@ export function ConnectionEditor() {
     localAudioSoundEffects,
     localAudioMusic,
     selectedImageService,
+    isCodexImageService,
     swarmUiWorkflowError,
     selectedImageDefaultsService,
     selectedVideoProvider,
@@ -1036,8 +1042,8 @@ export function ConnectionEditor() {
       ...currentConnection,
       name: localName,
       provider: localProvider,
-      baseUrl: isLocalAuthProvider ? "" : localBaseUrl,
-      model: normalizeGrokCliEditorModel(localProvider, localModel),
+      baseUrl: isLocalAuthProvider || isCodexImageService ? "" : localBaseUrl,
+      model: isCodexImageService ? CODEX_CHATGPT_IMAGE_MODEL : normalizeGrokCliEditorModel(localProvider, localModel),
       maxContext: localMaxContext,
       maxTokensOverride: localMaxTokensOverride ?? null,
       maxParallelJobs: localMaxParallelJobs,
@@ -1107,6 +1113,7 @@ export function ConnectionEditor() {
     localImageService,
     selectedVideoProvider,
     selectedImageService,
+    isCodexImageService,
     localImageEndpointId,
     localImagePromptInstructions,
     effectiveImageGenerationQuality,
@@ -1707,7 +1714,7 @@ export function ConnectionEditor() {
             </FieldGroup>
           )}
 
-          {!isLocalAuthProvider && (
+          {!isLocalAuthProvider && !isCodexImageService && (
             <>
               {/* ── API Key ── */}
               <FieldGroup
@@ -1817,31 +1824,39 @@ export function ConnectionEditor() {
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.service")}
               icon={<Globe size="0.875rem" className="text-sky-400" />}
-              help={localizeUi("ui.connections.connectioneditor.pickTheBackendTypeOnceThenPointBaseUrl")}
+              help={localizeUi(
+                isCodexImageService
+                  ? "ui.connections.connectioneditor.codexImageConnectionHelp"
+                  : "ui.connections.connectioneditor.pickTheBackendTypeOnceThenPointBaseUrl",
+              )}
             >
               <div className="grid grid-cols-2 gap-1.5">
                 {IMAGE_GENERATION_SOURCES.map((src) => {
                   const isActive = selectedImageService === src.id;
                   const sourceName =
-                    src.id === "atlas"
-                      ? t("connections.mediaSources.atlas.name")
-                      : src.id === "swarmui"
-                        ? t("connections.mediaSources.swarmui.name")
-                        : src.id === "zai"
-                          ? t("connections.mediaSources.zai.name")
-                          : src.id === "arli"
-                            ? t("connections.mediaSources.arli.name")
-                            : src.name;
+                    src.id === "codex_chatgpt"
+                      ? t("connections.mediaSources.codexChatgpt.name")
+                      : src.id === "atlas"
+                        ? t("connections.mediaSources.atlas.name")
+                        : src.id === "swarmui"
+                          ? t("connections.mediaSources.swarmui.name")
+                          : src.id === "zai"
+                            ? t("connections.mediaSources.zai.name")
+                            : src.id === "arli"
+                              ? t("connections.mediaSources.arli.name")
+                              : src.name;
                   const sourceDescription =
-                    src.id === "atlas"
-                      ? t("connections.mediaSources.atlas.imageDescription")
-                      : src.id === "swarmui"
-                        ? t("connections.mediaSources.swarmui.imageDescription")
-                        : src.id === "zai"
-                          ? t("connections.mediaSources.zai.imageDescription")
-                          : src.id === "arli"
-                            ? t("connections.mediaSources.arli.imageDescription")
-                            : src.description;
+                    src.id === "codex_chatgpt"
+                      ? t("connections.mediaSources.codexChatgpt.imageDescription")
+                      : src.id === "atlas"
+                        ? t("connections.mediaSources.atlas.imageDescription")
+                        : src.id === "swarmui"
+                          ? t("connections.mediaSources.swarmui.imageDescription")
+                          : src.id === "zai"
+                            ? t("connections.mediaSources.zai.imageDescription")
+                            : src.id === "arli"
+                              ? t("connections.mediaSources.arli.imageDescription")
+                              : src.description;
                   return (
                     <button
                       key={src.id}
@@ -1854,6 +1869,12 @@ export function ConnectionEditor() {
                         setLocalImageService(src.id);
                         if (shouldSeedBaseUrl) {
                           setLocalBaseUrl(src.defaultBaseUrl);
+                        }
+                        if (src.id === "codex_chatgpt") {
+                          setLocalBaseUrl("");
+                          setLocalApiKey("");
+                          setLocalModel(CODEX_CHATGPT_IMAGE_MODEL);
+                          setShowModelDropdown(false);
                         }
                         if (src.id === "zai" && !ZAI_IMAGE_MODELS.some((model) => model.id === localModel.trim())) {
                           setLocalModel("glm-image");
@@ -1877,7 +1898,11 @@ export function ConnectionEditor() {
                 })}
               </div>
               <p className="text-[0.625rem] text-[var(--muted-foreground)]">
-                {localizeUi("ui.connections.connectioneditor.pickTheBackendTypeOnceThenPointBaseUrl_cfb1337")}
+                {localizeUi(
+                  isCodexImageService
+                    ? "ui.connections.connectioneditor.codexImageLoginNotice"
+                    : "ui.connections.connectioneditor.pickTheBackendTypeOnceThenPointBaseUrl_cfb1337",
+                )}
               </p>
               {selectedImageService === "runpod_comfyui" && (
                 <div className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-[0.625rem] text-amber-300/80">
@@ -2092,14 +2117,17 @@ export function ConnectionEditor() {
             {/* Standard model dropdown + manual input (used for all providers including image_generation) */}
             <div ref={modelDropdownRef} className={cn("relative min-w-0", showModelDropdown && "z-50")}>
               <div
-                onClick={() => setShowModelDropdown(!showModelDropdown)}
+                onClick={() => {
+                  if (!isCodexImageService) setShowModelDropdown(!showModelDropdown);
+                }}
+                aria-disabled={isCodexImageService}
                 className={cn(
                   "relative flex min-w-0 cursor-pointer items-center gap-2 rounded-xl bg-[var(--secondary)] px-3 py-2.5 ring-1 ring-[var(--border)] transition-all hover:ring-[var(--ring)]",
                   showModelDropdown && "z-50 ring-sky-400/50",
                 )}
               >
                 <Search size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />
-                {showModelDropdown ? (
+                {showModelDropdown && !isCodexImageService ? (
                   <input
                     ref={modelSearchInputRef}
                     value={modelSearch}
@@ -2113,26 +2141,32 @@ export function ConnectionEditor() {
                   <span
                     className={cn("min-w-0 flex-1 truncate text-sm", !localModel && "text-[var(--muted-foreground)]")}
                   >
-                    {localModel
-                      ? selectedModelInfo
-                        ? localizeUi("ui.connections.connectioneditor.value1Value2", {
-                            value1: selectedModelInfo.name,
-                            value2: selectedModelInfo.id,
-                          })
-                        : localModel
-                      : emptyModelLabel}
+                    {isCodexImageService
+                      ? localizeUi("ui.connections.connectioneditor.codexImageFixedModel", {
+                          model: CODEX_CHATGPT_IMAGE_MODEL,
+                        })
+                      : localModel
+                        ? selectedModelInfo
+                          ? localizeUi("ui.connections.connectioneditor.value1Value2", {
+                              value1: selectedModelInfo.name,
+                              value2: selectedModelInfo.id,
+                            })
+                          : localModel
+                        : emptyModelLabel}
                   </span>
                 )}
-                <ChevronDown
-                  size="0.875rem"
-                  className={cn(
-                    "shrink-0 text-[var(--muted-foreground)] transition-transform",
-                    showModelDropdown && "rotate-180",
-                  )}
-                />
+                {!isCodexImageService && (
+                  <ChevronDown
+                    size="0.875rem"
+                    className={cn(
+                      "shrink-0 text-[var(--muted-foreground)] transition-transform",
+                      showModelDropdown && "rotate-180",
+                    )}
+                  />
+                )}
               </div>
 
-              {showModelDropdown && (
+              {showModelDropdown && !isCodexImageService && (
                 <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-80 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
                   {/* Fetch from API button */}
                   {!(localProvider === "image_generation" && selectedImageService === "novelai") && (
@@ -2269,7 +2303,7 @@ export function ConnectionEditor() {
             </div>
 
             {/* Manual model ID input below dropdown */}
-            {localProvider !== "custom" && (
+            {localProvider !== "custom" && !isCodexImageService && (
               <div className="mt-2 flex min-w-0 items-center gap-2">
                 <input
                   value={localModel}
@@ -2479,6 +2513,7 @@ export function ConnectionEditor() {
           )}
 
           {localProvider === "image_generation" &&
+            !isCodexImageService &&
             !["comfyui", "swarmui", "runpod_comfyui", "automatic1111", "drawthings", "pollinations"].includes(
               selectedImageService,
             ) && (
@@ -3218,7 +3253,11 @@ export function ConnectionEditor() {
 
             <p className="text-[0.625rem] text-[var(--muted-foreground)]">
               <strong>{localizeUi("ui.connections.connectioneditor.testConnection")}</strong>{" "}
-              {localizeUi("ui.connections.connectioneditor.verifiesYourApiKeyAgainstTheProviderCatalogOr")}
+              {localizeUi(
+                isCodexImageService
+                  ? "ui.connections.connectioneditor.codexImageTestConnectionHelp"
+                  : "ui.connections.connectioneditor.verifiesYourApiKeyAgainstTheProviderCatalogOr",
+              )}
               {!isMediaGenerationProvider && (
                 <>
                   {" "}
@@ -3230,7 +3269,11 @@ export function ConnectionEditor() {
                 <>
                   {" "}
                   <strong>{localizeUi("ui.connections.connectioneditor.testImage")}</strong>{" "}
-                  {localizeUi("ui.connections.connectioneditor.generatesA10241024TestImageRequiresSavingFirst")}
+                  {localizeUi(
+                    isCodexImageService
+                      ? "ui.connections.connectioneditor.codexImageTestImageHelp"
+                      : "ui.connections.connectioneditor.generatesA10241024TestImageRequiresSavingFirst",
+                  )}
                 </>
               )}
               {localProvider === "video_generation" && (

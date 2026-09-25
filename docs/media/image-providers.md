@@ -1,6 +1,6 @@
 # Image Generation Providers and Setup
 
-This guide explains how to connect an image generation service to Marinara Engine. It also covers what each of the 17 services needs. Image generation powers scene illustrations, selfies, scene backgrounds, and generated avatars, portraits, and sprites.
+This guide explains how to connect an image generation service to Marinara Engine. It also covers what each of the 18 services needs. Image generation powers scene illustrations, selfies, scene backgrounds, and generated avatars, portraits, and sprites.
 
 You set up image generation as a special kind of connection. Once one image connection works, every image feature in the app can use it.
 
@@ -21,15 +21,18 @@ Follow these steps to add an image connection.
 
 If **Test Image** returns a picture, your connection is ready. If it fails, check the API key and Base URL.
 
+For **ChatGPT / Codex Image**, run `codex login` on the computer and user account that runs Marinara. This service does not need an API key or Base URL, and its GPT Image model is fixed. **Test Connection** checks the login without generating an image; **Test Image** generates one image and uses your ChatGPT/Codex allowance.
+
 ## Choosing a service
 
-The 17 services fall into three groups. Cloud services need an API key and an account. Free services need no key. Local services run image software on your own computer.
+The 18 services fall into three groups. Most cloud services need an API key and an account; ChatGPT / Codex Image instead uses a local Codex login. Free services need no key. Local services run image software on your own computer.
 
 The table below shows each service at a glance. Details and quirks follow in the per-service sections.
 
 | Service | API key | Where it runs |
 | --- | --- | --- |
 | OpenAI (DALL-E) | Yes | Cloud |
+| ChatGPT / Codex Image | Codex login | Cloud |
 | Stability AI | Yes | Cloud |
 | Together AI | Yes | Cloud |
 | NovelAI | Yes | Cloud |
@@ -50,6 +53,10 @@ The table below shows each service at a glance. Details and quirks follow in the
 ## OpenAI (DALL-E)
 
 Cloud service with the default Base URL `https://api.openai.com/v1`. It needs an API key from your OpenAI account. It offers DALL-E and GPT Image models. It accepts up to 16 reference images.
+
+## ChatGPT / Codex Image
+
+Cloud service that reuses your local `codex login` ChatGPT OAuth session. It needs no OpenAI Platform API key or Base URL. This first version generates one PNG from a text prompt with the fixed Codex GPT Image model. Reference images and image editing are not supported; requests that include reference images return a clear error. The connection check validates the local login without generating an image.
 
 ## Stability AI
 

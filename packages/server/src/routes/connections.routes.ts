@@ -8,6 +8,7 @@ import { extname, join } from "path";
 import {
   ATLAS_CLOUD_IMAGE_MODELS,
   ATLAS_CLOUD_VIDEO_MODELS,
+  CODEX_CHATGPT_IMAGE_MODEL,
   ZAI_IMAGE_MODELS,
   IMAGE_DEFAULTS_STORAGE_KEY,
   MODEL_LISTS,
@@ -35,6 +36,7 @@ import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/ge
 import { describeEmptyModelResponse, sentOutputBudget } from "../services/generation/empty-response-reason.js";
 import { isGlm53MandatoryReasoningModel } from "../services/llm/providers/glm-request-compat.js";
 import { fetchOpenAIChatGPTModels, getOpenAIChatGPTAuth } from "../services/llm/openai-chatgpt-auth.js";
+import { getCodexChatGPTImageAuth } from "../services/image/openai-chatgpt-image.js";
 import { fetchGrokCliModels } from "../services/llm/providers/grok-subscription.provider.js";
 import {
   buildGoogleVertexModelUrl,
@@ -566,6 +568,19 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const debugLog = (message: string, ...args: any[]) => logDebugOverride(requestDebug, message, ...args);
     const start = Date.now();
     try {
+      if (
+        conn.provider === "image_generation" &&
+        resolveImageGenerationSource(conn as Record<string, unknown>, conn.baseUrl || "") === "codex_chatgpt"
+      ) {
+        await getCodexChatGPTImageAuth();
+        return {
+          success: true,
+          message:
+            "Codex ChatGPT login is ready. Test Image generates one image and uses your ChatGPT/Codex allowance.",
+          latencyMs: Date.now() - start,
+          modelName: CODEX_CHATGPT_IMAGE_MODEL,
+        };
+      }
       if (conn.provider === "claude_subscription") {
         if (!conn.model) {
           return {
@@ -807,6 +822,13 @@ export async function connectionsRoutes(app: FastifyInstance) {
           // before the host has run `codex login`.
         }
         return { models: MODEL_LISTS.openai_chatgpt.map((m) => ({ id: m.id, name: m.name })) };
+      }
+
+      if (
+        conn.provider === "image_generation" &&
+        resolveImageGenerationSource(conn as Record<string, unknown>, conn.baseUrl || "") === "codex_chatgpt"
+      ) {
+        return { models: [{ id: CODEX_CHATGPT_IMAGE_MODEL, name: "GPT Image 2 (ChatGPT / Codex)" }] };
       }
 
       if (conn.provider === "grok_subscription") {
