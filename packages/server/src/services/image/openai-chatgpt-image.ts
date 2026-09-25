@@ -12,6 +12,8 @@ import type { ImageGenRequest, ImageGenResult } from "./image-generation.js";
 
 // Codex's built-in image tool uses this standalone Images API route for ChatGPT OAuth sessions.
 const GENERATIONS_URL = `${OPENAI_CHATGPT_CODEX_BASE_URL}/images/generations`;
+const EDITS_URL = `${OPENAI_CHATGPT_CODEX_BASE_URL}/images/edits`;
+const MAX_EDIT_IMAGES = 5;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 type ImageDependencies = {
@@ -51,14 +53,62 @@ function imageHttpError(status: number, payload: unknown): Error {
   return new Error(`ChatGPT/Codex image generation failed (HTTP ${status}). Try again later.`);
 }
 
-/** Phase 1: one text prompt, one PNG. The caller's image model and dimensions do not override Codex defaults. */
+function referenceImageDataUrl(reference: string): string {
+  // The shared image helper defaults unknown bytes to PNG; this endpoint must reject malformed references.
+  const value = reference.trim();
+  const dataUrl = value.match(/^data:(image\/(?:png|jpe?g|webp|gif|avif|bmp));base64,([\s\S]*)$/iu);
+  if (value.startsWith("data:") && !dataUrl) {
+    throw new Error("ChatGPT/Codex reference image has an invalid data URL.");
+  }
+  const compact = (dataUrl?.[2] ?? value).replace(/\s+/gu, "");
+  const unpadded = compact.replace(/=+$/u, "");
+  if (
+    !unpadded ||
+    /[^A-Za-z0-9+/]/u.test(unpadded) ||
+    unpadded.length % 4 === 1 ||
+    compact.length - unpadded.length > 2
+  ) {
+    throw new Error("ChatGPT/Codex reference image is not valid base64 image data.");
+  }
+  const base64 = `${unpadded}${"=".repeat((4 - (unpadded.length % 4)) % 4)}`;
+  const bytes = Buffer.from(base64.slice(0, 64), "base64");
+  let mimeType: string | null = null;
+  if (bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) mimeType = "image/png";
+  else if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) mimeType = "image/jpeg";
+  else if (bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP")
+    mimeType = "image/webp";
+  else if (["GIF87a", "GIF89a"].includes(bytes.toString("ascii", 0, 6))) mimeType = "image/gif";
+  else if (bytes.toString("ascii", 0, 2) === "BM") mimeType = "image/bmp";
+  else if (bytes.toString("ascii", 4, 8) === "ftyp" && ["avif", "avis"].includes(bytes.toString("ascii", 8, 12))) {
+    mimeType = "image/avif";
+  }
+  if (!mimeType) throw new Error("ChatGPT/Codex reference image is not a recognized image.");
+  const declaredMimeType = dataUrl?.[1]?.toLowerCase().replace("image/jpg", "image/jpeg");
+  if (declaredMimeType && declaredMimeType !== mimeType) {
+    throw new Error("ChatGPT/Codex reference image data URL does not match its image format.");
+  }
+  return `data:${mimeType};base64,${base64}`;
+}
+
+function editReferences(request: ImageGenRequest): Array<{ image_url: string }> {
+  const references = [request.referenceImage, ...(request.referenceImages ?? [])]
+    .map((value) => value?.trim())
+    .filter((value): value is string => !!value);
+  const imageUrls = [...new Set(references.map(referenceImageDataUrl))];
+  if (imageUrls.length > MAX_EDIT_IMAGES) {
+    throw new Error(
+      `ChatGPT/Codex image editing supports up to ${MAX_EDIT_IMAGES} reference images, but ${imageUrls.length} were provided.`,
+    );
+  }
+  return imageUrls.map((image_url) => ({ image_url }));
+}
+
+/** One PNG result. The caller's image model and dimensions do not override Codex defaults. */
 export async function generateCodexChatGPTImage(
   request: ImageGenRequest,
   dependencies: ImageDependencies = { getAuth: getCodexChatGPTImageAuth, fetch: safeFetch },
 ): Promise<ImageGenResult> {
-  if (request.referenceImage || request.referenceImages?.length) {
-    throw new Error("ChatGPT/Codex image generation currently supports text prompts only.");
-  }
+  const images = editReferences(request);
 
   const auth = await dependencies.getAuth();
   const prompt = request.negativePrompt?.trim()
@@ -68,7 +118,7 @@ export async function generateCodexChatGPTImage(
 
   let response: Response;
   try {
-    response = await dependencies.fetch(GENERATIONS_URL, {
+    response = await dependencies.fetch(images.length > 0 ? EDITS_URL : GENERATIONS_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -77,6 +127,7 @@ export async function generateCodexChatGPTImage(
         "x-codex-image-turn-id": randomUUID(),
       },
       body: JSON.stringify({
+        ...(images.length > 0 ? { images } : {}),
         model: CODEX_CHATGPT_IMAGE_MODEL,
         prompt,
         background: "opaque",

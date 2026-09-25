@@ -56,7 +56,9 @@ Cloud service with the default Base URL `https://api.openai.com/v1`. It needs an
 
 ## ChatGPT / Codex Image
 
-Cloud service that reuses your local `codex login` ChatGPT OAuth session. It needs no OpenAI Platform API key or Base URL. This first version generates one PNG from a text prompt with the fixed Codex GPT Image model. Reference images and image editing are not supported; requests that include reference images return a clear error. The connection check validates the local login without generating an image.
+Cloud service that reuses your local `codex login` ChatGPT OAuth session. It needs no OpenAI Platform API key or Base URL. With no reference images, it generates one PNG from a text prompt using the fixed Codex GPT Image model. With 1–5 reference images, it sends an image edit request and returns one PNG. More than 5 distinct reference images produce an error rather than silently dropping any. The connection check validates the local login without generating an image.
+
+To try one edit, open a character that already has an avatar, choose **Generate Character Avatar**, select the ChatGPT / Codex Image connection, keep **Use current avatar as a reference** enabled, enter a short appearance change, and choose **Generate**. Review the preview before choosing **Use Avatar**; generating uses your ChatGPT/Codex image allowance.
 
 ## Stability AI
 

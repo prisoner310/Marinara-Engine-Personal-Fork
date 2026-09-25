@@ -5072,7 +5072,7 @@
   "ui.connections.connectioneditor.codexChatgpt": "Codex ChatGPT",
   "ui.connections.connectioneditor.codexImageConnectionHelp": "Uses the local Codex ChatGPT login; no API key or Base URL is needed.",
   "ui.connections.connectioneditor.codexImageFixedModel": "GPT Image 2 ({{model}}) — fixed for this connection",
-  "ui.connections.connectioneditor.codexImageLoginNotice": "Run codex login on the Marinara host first. Phase 1 generates one image from text with GPT Image 2. This uses your ChatGPT/Codex image allowance. Image references are not supported yet.",
+  "ui.connections.connectioneditor.codexImageLoginNotice": "Run codex login on the Marinara host first. GPT Image 2 generates one image from text or edits up to 5 reference images. This uses your ChatGPT/Codex image allowance.",
   "ui.connections.connectioneditor.codexImageTestConnectionHelp": "checks the local Codex ChatGPT login without generating an image or using image allowance.",
   "ui.connections.connectioneditor.codexImageTestImageHelp": "generates one image using your ChatGPT/Codex allowance after you save the connection.",
   "ui.connections.connectioneditor.codexLogin": "codex login",

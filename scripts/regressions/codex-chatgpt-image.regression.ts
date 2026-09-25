@@ -45,7 +45,9 @@ let sentOptions: Parameters<typeof safeFetch>[1] | undefined;
 let responseStatus = 200;
 let responseBody: unknown = { data: [{ b64_json: png }] };
 let networkFailure = false;
+let fetchCalls = 0;
 const fakeFetch = (async (url: string | URL, options?: Parameters<typeof safeFetch>[1]) => {
+  fetchCalls += 1;
   sentUrl = String(url);
   sentOptions = options;
   if (networkFailure) throw new Error(`request failed with ${token}`);
@@ -76,6 +78,89 @@ assert.equal(headers["ChatGPT-Account-ID"], auth.accountId);
 assert.match(headers["x-codex-image-turn-id"], /^[0-9a-f-]{36}$/u);
 assert.equal(String(sentOptions?.body).includes(token), false);
 assert.equal(sentOptions?.policy?.allowLocal, false);
+
+// Empty references retain Phase 1's generation route and request shape.
+await generateCodexChatGPTImage(
+  { prompt: "a red fox", referenceImage: " ", referenceImages: ["", "  "] },
+  dependencies,
+);
+assert.equal(sentUrl, `${OPENAI_CHATGPT_CODEX_BASE_URL}/images/generations`);
+assert.equal("images" in JSON.parse(String(sentOptions?.body)), false);
+
+const edited = await generateCodexChatGPTImage(
+  { prompt: "change the pose", negativePrompt: "text", referenceImage: png },
+  dependencies,
+);
+assert.deepEqual(edited, { base64: png, mimeType: "image/png", ext: "png" });
+assert.equal(sentUrl, `${OPENAI_CHATGPT_CODEX_BASE_URL}/images/edits`);
+assert.equal(sentOptions?.method, "POST");
+assert.deepEqual(JSON.parse(String(sentOptions?.body)), {
+  images: [{ image_url: `data:image/png;base64,${png}` }],
+  model: CODEX_CHATGPT_IMAGE_MODEL,
+  prompt: "change the pose\n\nDo not include: text.",
+  background: "opaque",
+  quality: "auto",
+  size: "auto",
+});
+assert.equal((sentOptions?.headers as Record<string, string>).Authorization, `Bearer ${token}`);
+assert.equal((sentOptions?.headers as Record<string, string>)["ChatGPT-Account-ID"], auth.accountId);
+assert.match((sentOptions?.headers as Record<string, string>)["x-codex-image-turn-id"], /^[0-9a-f-]{36}$/u);
+assert.equal(String(sentOptions?.body).includes(token), false);
+
+await generateCodexChatGPTImage({ prompt: "edit", referenceImage: `data:image/png;base64,${png}` }, dependencies);
+assert.deepEqual(JSON.parse(String(sentOptions?.body)).images, [{ image_url: `data:image/png;base64,${png}` }]);
+
+const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]).toString("base64");
+const webp = Buffer.from("RIFF0000WEBPVP8 ").toString("base64");
+await generateCodexChatGPTImage(
+  { prompt: "edit", referenceImage: png, referenceImages: [png, jpeg, webp, `data:image/png;base64,${png}`] },
+  dependencies,
+);
+assert.deepEqual(JSON.parse(String(sentOptions?.body)).images, [
+  { image_url: `data:image/png;base64,${png}` },
+  { image_url: `data:image/jpeg;base64,${jpeg}` },
+  { image_url: `data:image/webp;base64,${webp}` },
+]);
+
+const distinctPngs = Array.from({ length: 6 }, (_, index) =>
+  Buffer.concat([Buffer.from(png, "base64"), Buffer.from([index])]).toString("base64"),
+);
+await generateCodexChatGPTImage(
+  { prompt: "edit", referenceImage: distinctPngs[0], referenceImages: distinctPngs.slice(1, 5) },
+  dependencies,
+);
+assert.equal(JSON.parse(String(sentOptions?.body)).images.length, 5);
+const fetchCallsBeforeRejectedReferences = fetchCalls;
+await assert.rejects(
+  generateCodexChatGPTImage(
+    { prompt: "edit", referenceImage: distinctPngs[0], referenceImages: distinctPngs.slice(1) },
+    dependencies,
+  ),
+  /up to 5 reference images, but 6 were provided/u,
+);
+assert.equal(fetchCalls, fetchCallsBeforeRejectedReferences);
+
+for (const referenceImage of [
+  "data:image/png;base64,",
+  "data:image/png;utf8,broken",
+  "not-an-image",
+  "https://example.com/image.png",
+  `data:image/jpeg;base64,${png}`,
+]) {
+  await assert.rejects(
+    generateCodexChatGPTImage({ prompt: "edit", referenceImage }, dependencies),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /reference image/u);
+      assert.equal(error.message.includes(referenceImage), false);
+      return true;
+    },
+  );
+}
+assert.equal(fetchCalls, fetchCallsBeforeRejectedReferences);
+
+responseBody = { data: [{ b64_json: png, generation_id: "synthetic-generation-id" }] };
+assert.deepEqual(await generateCodexChatGPTImage({ prompt: "edit", referenceImage: png }, dependencies), edited);
 
 const generate = () => generateCodexChatGPTImage({ prompt: "a red fox" }, dependencies);
 responseBody = { data: [] };
@@ -110,10 +195,32 @@ await assert.rejects(generate(), (error: unknown) => {
   return true;
 });
 networkFailure = false;
-await assert.rejects(
-  generateCodexChatGPTImage({ prompt: "edit this", referenceImage: png }, dependencies),
-  /text prompts only/u,
-);
+
+const edit = () => generateCodexChatGPTImage({ prompt: "edit this", referenceImage: png }, dependencies);
+for (const [status, expected] of [
+  [401, /Run `codex login` again/u],
+  [403, /not allowed/u],
+  [429, /usage limit/u],
+  [400, /HTTP 400/u],
+  [503, /HTTP 503/u],
+] as const) {
+  responseStatus = status;
+  responseBody = { error: { message: `private payload ${token} ${png}` } };
+  await assert.rejects(edit(), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.match(error.message, expected);
+    assert.equal(error.message.includes(token), false);
+    assert.equal(error.message.includes(png), false);
+    return true;
+  });
+  assert.equal(sentUrl, `${OPENAI_CHATGPT_CODEX_BASE_URL}/images/edits`);
+}
+responseStatus = 200;
+responseBody = { data: [] };
+await assert.rejects(edit(), /returned no image data/u);
+networkFailure = true;
+await assert.rejects(edit(), /Could not reach/u);
+networkFailure = false;
 
 const previousCodexHome = process.env.CODEX_HOME;
 const previousStorageDir = process.env.FILE_STORAGE_DIR;
@@ -131,6 +238,14 @@ try {
     generateImage(CODEX_CHATGPT_IMAGE_MODEL, "https://image.pollinations.ai", "", "codex_chatgpt", {
       prompt: "a red fox",
       model: CODEX_CHATGPT_IMAGE_MODEL,
+    }),
+    /codex login/u,
+  );
+  await assert.rejects(
+    generateImage(CODEX_CHATGPT_IMAGE_MODEL, "https://image.pollinations.ai", "", "codex_chatgpt", {
+      prompt: "edit a red fox",
+      model: CODEX_CHATGPT_IMAGE_MODEL,
+      referenceImage: png,
     }),
     /codex login/u,
   );

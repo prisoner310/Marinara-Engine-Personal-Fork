@@ -41,6 +41,7 @@ test("ChatGPT/Codex image connection needs no API key or Base URL and keeps its 
     await expect(editor.getByRole("heading", { name: "Base URL", exact: true })).toHaveCount(0);
     await expect(editor.getByText("GPT Image 2 (gpt-image-2) — fixed for this connection")).toBeVisible();
     await expect(editor.getByText(/Run codex login on the Marinara host first/u)).toBeVisible();
+    await expect(editor.getByText(/edits up to 5 reference images/u)).toBeVisible();
     await editor.getByRole("button", { name: /OpenAI \(DALL-E\)/u }).click();
     await editor.getByRole("button", { name: "Save", exact: true }).click();
     await expect
