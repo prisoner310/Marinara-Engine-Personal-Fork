@@ -23,6 +23,11 @@ This is the repository guide for coding agents. Canonical workflow, validation, 
 - Run `pnpm version:check` when you touch release metadata, version-bearing files, or README release references.
 - For every bug fix, behavior change, or new feature, add a concise user-focused entry under the appropriate `CHANGELOG.md` `[Unreleased]` heading. Purely mechanical changes with no product or contributor-workflow impact do not need an entry.
 
+## Personal Codex Image Handoff
+
+- When starting ChatGPT / Codex Image work on the `personal/codex-image` private branch, read `docs/personal/CODEX_IMAGE_HANDOFF.md` first.
+- At the end of that work, update the handoff if implementation, design decisions, test results, or next steps changed.
+
 ## Temporary Tests
 
 - Do not keep `.test.ts` files in the repo. If an agent creates one for local proof, remove it after the test is done.
