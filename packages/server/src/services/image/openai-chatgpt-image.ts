@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { CODEX_CHATGPT_IMAGE_MODEL } from "@marinara-engine/shared";
-import { logDebugOverride } from "../../lib/logger.js";
+import { logger } from "../../lib/logger.js";
 import { safeFetch } from "../../utils/security.js";
 import {
   OPENAI_CHATGPT_CODEX_BASE_URL,
@@ -19,7 +19,43 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
 type ImageDependencies = {
   getAuth: () => Promise<OpenAIChatGPTAuth>;
   fetch: typeof safeFetch;
+  debugLog?: (message: string) => void;
 };
+
+type ImageResponse = {
+  data?: Array<{ b64_json?: unknown }>;
+  size?: unknown;
+  background?: unknown;
+  quality?: unknown;
+};
+
+/** PNG dimensions are metadata only; a missing or malformed IHDR must not change generation success. */
+export function readCodexPngDimensions(image: Buffer): { width: number; height: number } | undefined {
+  if (
+    image.length < 24 ||
+    !image.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE) ||
+    image.readUInt32BE(8) !== 13 ||
+    image.toString("ascii", 12, 16) !== "IHDR"
+  ) {
+    return undefined;
+  }
+  const width = image.readUInt32BE(16);
+  const height = image.readUInt32BE(20);
+  return width > 0 && height > 0 ? { width, height } : undefined;
+}
+
+function diagnosticValue(value: unknown, allowed: readonly string[]): string {
+  return typeof value === "string" && allowed.includes(value) ? value : "<absent>";
+}
+
+function responseSize(value: unknown): string {
+  if (value === "auto") return value;
+  return typeof value === "string" && /^[1-9]\d{0,5}x[1-9]\d{0,5}$/u.test(value) ? value : "<absent>";
+}
+
+function requestedDimension(value: number | undefined): string {
+  return value !== undefined && Number.isSafeInteger(value) && value > 0 ? String(value) : "<absent>";
+}
 
 function imageAuthError(error: unknown): Error {
   const message = error instanceof Error ? error.message : "";
@@ -126,7 +162,7 @@ export async function generateCodexChatGPTImage(
   const prompt = request.negativePrompt?.trim()
     ? `${request.prompt.trim()}\n\nDo not include: ${request.negativePrompt.trim()}.`
     : request.prompt.trim();
-  logDebugOverride(request.debugMode === true, "[debug/image] ChatGPT/Codex image prompt:\n%s", prompt);
+  const sentSize = codexImageSize(request);
 
   let response: Response;
   try {
@@ -144,7 +180,7 @@ export async function generateCodexChatGPTImage(
         prompt,
         background: request.transparentBackground === true ? "transparent" : "opaque",
         quality: "auto",
-        size: codexImageSize(request),
+        size: sentSize,
       }),
       signal: request.signal,
       policy: {
@@ -168,7 +204,7 @@ export async function generateCodexChatGPTImage(
     throw imageHttpError(response.status, payload);
   }
 
-  const payload = (await response.json().catch(() => null)) as { data?: Array<{ b64_json?: unknown }> } | null;
+  const payload = (await response.json().catch(() => null)) as ImageResponse | null;
   if (!payload || !Array.isArray(payload.data)) {
     throw new Error("ChatGPT/Codex returned an invalid image response.");
   }
@@ -180,5 +216,15 @@ export async function generateCodexChatGPTImage(
   if (!image.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
     throw new Error("ChatGPT/Codex returned invalid PNG image data.");
   }
+  const dimensions = readCodexPngDimensions(image);
+  const diagnostic =
+    `[codex-image] endpoint=${images.length > 0 ? "edit" : "generation"} ` +
+    `requested=${requestedDimension(request.width)}x${requestedDimension(request.height)} ` +
+    `sent=${sentSize} response=${responseSize(payload.size)} ` +
+    `actual=${dimensions ? `${dimensions.width}x${dimensions.height}` : "<unavailable>"} ` +
+    `background=${diagnosticValue(payload.background, ["auto", "opaque", "transparent"])} ` +
+    `quality=${diagnosticValue(payload.quality, ["auto", "low", "medium", "high", "extra_high", "max"])}`;
+  if (dependencies.debugLog) dependencies.debugLog(diagnostic);
+  else logger.debug("%s", diagnostic);
   return { base64, mimeType: "image/png", ext: "png" };
 }

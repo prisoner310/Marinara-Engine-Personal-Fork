@@ -1333,6 +1333,10 @@ assert.deepEqual(resolveIllustratorImageSize({ width: 960, height: 540 }, "portr
   width: 540,
   height: 960,
 });
+assert.deepEqual(resolveIllustratorImageSize({ width: 896, height: 1280 }, "square"), {
+  width: 896,
+  height: 896,
+});
 
 const minimalProfessorMariPersona = buildPersonaCreateRow(
   { name: "Minimal helper persona" },
@@ -6872,6 +6876,11 @@ assert.match(galleryRoutesSource, /resolveIllustratorPromptRuntime\(\{[\s\S]*cha
 assert.match(
   conversationSelfieRuntimeSource,
   /resolveIllustratorPromptRuntime\(\{[\s\S]*chatMetadata: args\.chatMeta/u,
+);
+assert.match(
+  conversationSelfieRuntimeSource,
+  /generateImage\([\s\S]{0,1000}width: selfieW \|\| imageSettings\.selfie\.width,\s*height: selfieH \|\| imageSettings\.selfie\.height/u,
+  "Conversation Selfie must pass its selected resolution or the Selfie settings to generateImage",
 );
 assert.match(
   conversationSelfieRuntimeSource,

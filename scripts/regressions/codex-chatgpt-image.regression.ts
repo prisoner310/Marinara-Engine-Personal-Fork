@@ -12,6 +12,7 @@ import { generateImage, resolveImageBackend } from "../../packages/server/src/se
 import {
   generateCodexChatGPTImage,
   getCodexChatGPTImageAuth,
+  readCodexPngDimensions,
 } from "../../packages/server/src/services/image/openai-chatgpt-image.js";
 import { OPENAI_CHATGPT_CODEX_BASE_URL } from "../../packages/server/src/services/llm/openai-chatgpt-auth.js";
 import { connectionsRoutes } from "../../packages/server/src/routes/connections.routes.js";
@@ -46,6 +47,7 @@ let responseStatus = 200;
 let responseBody: unknown = { data: [{ b64_json: png }] };
 let networkFailure = false;
 let fetchCalls = 0;
+const diagnosticLines: string[] = [];
 const fakeFetch = (async (url: string | URL, options?: Parameters<typeof safeFetch>[1]) => {
   fetchCalls += 1;
   sentUrl = String(url);
@@ -56,7 +58,19 @@ const fakeFetch = (async (url: string | URL, options?: Parameters<typeof safeFet
     headers: { "content-type": "application/json" },
   });
 }) as typeof safeFetch;
-const dependencies = { getAuth: async () => auth, fetch: fakeFetch };
+const dependencies = { getAuth: async () => auth, fetch: fakeFetch, debugLog: (line: string) => diagnosticLines.push(line) };
+
+const pngHeader = Buffer.alloc(24);
+Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(pngHeader);
+pngHeader.writeUInt32BE(13, 8);
+pngHeader.write("IHDR", 12, "ascii");
+pngHeader.writeUInt32BE(1024, 16);
+pngHeader.writeUInt32BE(1536, 20);
+assert.deepEqual(readCodexPngDimensions(pngHeader), { width: 1024, height: 1536 });
+assert.equal(readCodexPngDimensions(pngHeader.subarray(0, 23)), undefined);
+assert.equal(readCodexPngDimensions(Buffer.from(png, "base64"))?.width, 1);
+pngHeader.write("BAD!", 12, "ascii");
+assert.equal(readCodexPngDimensions(pngHeader), undefined);
 
 const result = await generateCodexChatGPTImage(
   {
@@ -85,6 +99,43 @@ assert.equal(headers["ChatGPT-Account-ID"], auth.accountId);
 assert.match(headers["x-codex-image-turn-id"], /^[0-9a-f-]{36}$/u);
 assert.equal(String(sentOptions?.body).includes(token), false);
 assert.equal(sentOptions?.policy?.allowLocal, false);
+assert.match(diagnosticLines.at(-1) ?? "", /endpoint=generation requested=1024x1024 sent=1024x1024 response=<absent> actual=1x1/u);
+
+// Size metadata is observational: a declared size mismatch must not reject either route.
+responseBody = {
+  size: "1024x1536",
+  background: "opaque",
+  quality: "auto",
+  data: [{ b64_json: png }],
+};
+for (const referenceImage of [undefined, png]) {
+  const diagnosticPrompt = "private diagnostic prompt";
+  const diagnosed = await generateCodexChatGPTImage(
+    { prompt: diagnosticPrompt, referenceImage, width: 896, height: 1280 },
+    dependencies,
+  );
+  assert.deepEqual(diagnosed, { base64: png, mimeType: "image/png", ext: "png" });
+  assert.equal(sentUrl, `${OPENAI_CHATGPT_CODEX_BASE_URL}/images/${referenceImage ? "edits" : "generations"}`);
+  assert.equal(JSON.parse(String(sentOptions?.body)).size, "896x1280");
+  const diagnostic = diagnosticLines.at(-1) ?? "";
+  assert.match(
+    diagnostic,
+    new RegExp(
+      `endpoint=${referenceImage ? "edit" : "generation"} requested=896x1280 sent=896x1280 ` +
+        "response=1024x1536 actual=1x1 background=opaque quality=auto",
+      "u",
+    ),
+  );
+  for (const secret of [token, auth.accountId, diagnosticPrompt, png]) assert.equal(diagnostic.includes(secret), false);
+}
+responseBody = { data: [{ b64_json: png }] };
+await generateCodexChatGPTImage({ prompt: "metadata absent", width: 896, height: 1280 }, dependencies);
+assert.match(diagnosticLines.at(-1) ?? "", /response=<absent> actual=1x1 background=<absent> quality=<absent>/u);
+responseBody = { size: token, background: token, quality: token, data: [{ b64_json: png }] };
+await generateCodexChatGPTImage({ prompt: "untrusted metadata" }, dependencies);
+assert.match(diagnosticLines.at(-1) ?? "", /response=<absent> actual=1x1 background=<absent> quality=<absent>/u);
+assert.equal((diagnosticLines.at(-1) ?? "").includes(token), false);
+responseBody = { data: [{ b64_json: png }] };
 
 // Empty references retain Phase 1's generation route and request shape.
 await generateCodexChatGPTImage(
