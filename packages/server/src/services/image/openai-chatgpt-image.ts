@@ -103,7 +103,19 @@ function editReferences(request: ImageGenRequest): Array<{ image_url: string }> 
   return imageUrls.map((image_url) => ({ image_url }));
 }
 
-/** One PNG result. The caller's image model and dimensions do not override Codex defaults. */
+function codexImageSize(request: ImageGenRequest): string {
+  const { width, height } = request;
+  return width !== undefined &&
+    Number.isSafeInteger(width) &&
+    width > 0 &&
+    height !== undefined &&
+    Number.isSafeInteger(height) &&
+    height > 0
+    ? `${width}x${height}`
+    : "auto";
+}
+
+/** One PNG result. The connection keeps Codex's fixed image model. */
 export async function generateCodexChatGPTImage(
   request: ImageGenRequest,
   dependencies: ImageDependencies = { getAuth: getCodexChatGPTImageAuth, fetch: safeFetch },
@@ -130,9 +142,9 @@ export async function generateCodexChatGPTImage(
         ...(images.length > 0 ? { images } : {}),
         model: CODEX_CHATGPT_IMAGE_MODEL,
         prompt,
-        background: "opaque",
+        background: request.transparentBackground === true ? "transparent" : "opaque",
         quality: "auto",
-        size: "auto",
+        size: codexImageSize(request),
       }),
       signal: request.signal,
       policy: {

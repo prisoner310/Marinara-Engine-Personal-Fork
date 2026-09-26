@@ -59,7 +59,14 @@ const fakeFetch = (async (url: string | URL, options?: Parameters<typeof safeFet
 const dependencies = { getAuth: async () => auth, fetch: fakeFetch };
 
 const result = await generateCodexChatGPTImage(
-  { prompt: "a red fox", negativePrompt: "text", width: 2048, height: 2048, model: "wrong-model" },
+  {
+    prompt: "a red fox",
+    negativePrompt: "text",
+    width: 1024,
+    height: 1024,
+    transparentBackground: false,
+    model: "wrong-model",
+  },
   dependencies,
 );
 assert.deepEqual(result, { base64: png, mimeType: "image/png", ext: "png" });
@@ -70,7 +77,7 @@ assert.deepEqual(JSON.parse(String(sentOptions?.body)), {
   prompt: "a red fox\n\nDo not include: text.",
   background: "opaque",
   quality: "auto",
-  size: "auto",
+  size: "1024x1024",
 });
 const headers = sentOptions?.headers as Record<string, string>;
 assert.equal(headers.Authorization, `Bearer ${token}`);
@@ -88,7 +95,14 @@ assert.equal(sentUrl, `${OPENAI_CHATGPT_CODEX_BASE_URL}/images/generations`);
 assert.equal("images" in JSON.parse(String(sentOptions?.body)), false);
 
 const edited = await generateCodexChatGPTImage(
-  { prompt: "change the pose", negativePrompt: "text", referenceImage: png },
+  {
+    prompt: "change the pose",
+    negativePrompt: "text",
+    referenceImage: png,
+    width: 1280,
+    height: 720,
+    transparentBackground: true,
+  },
   dependencies,
 );
 assert.deepEqual(edited, { base64: png, mimeType: "image/png", ext: "png" });
@@ -98,14 +112,39 @@ assert.deepEqual(JSON.parse(String(sentOptions?.body)), {
   images: [{ image_url: `data:image/png;base64,${png}` }],
   model: CODEX_CHATGPT_IMAGE_MODEL,
   prompt: "change the pose\n\nDo not include: text.",
-  background: "opaque",
+  background: "transparent",
   quality: "auto",
-  size: "auto",
+  size: "1280x720",
 });
 assert.equal((sentOptions?.headers as Record<string, string>).Authorization, `Bearer ${token}`);
 assert.equal((sentOptions?.headers as Record<string, string>)["ChatGPT-Account-ID"], auth.accountId);
 assert.match((sentOptions?.headers as Record<string, string>)["x-codex-image-turn-id"], /^[0-9a-f-]{36}$/u);
 assert.equal(String(sentOptions?.body).includes(token), false);
+
+// Generation and edit share background/size mapping, including invalid dimensions.
+for (const referenceImage of [undefined, png]) {
+  const url = `${OPENAI_CHATGPT_CODEX_BASE_URL}/images/${referenceImage ? "edits" : "generations"}`;
+  await generateCodexChatGPTImage(
+    { prompt: "transparent subject", referenceImage, width: 1280, height: 720, transparentBackground: true },
+    dependencies,
+  );
+  assert.equal(sentUrl, url);
+  const transparentBody = JSON.parse(String(sentOptions?.body)) as { background: string; size: string };
+  assert.equal(transparentBody.background, "transparent");
+  assert.equal(transparentBody.size, "1280x720");
+  for (const dimensions of [
+    { width: undefined, height: 1024 },
+    { width: 1024, height: undefined },
+    { width: 0, height: 1024 },
+    { width: Number.POSITIVE_INFINITY, height: 1024 },
+    { width: 1024.5, height: 1024 },
+  ]) {
+    await generateCodexChatGPTImage({ prompt: "opaque subject", referenceImage, ...dimensions }, dependencies);
+    const opaqueBody = JSON.parse(String(sentOptions?.body)) as { background: string; size: string };
+    assert.equal(opaqueBody.background, "opaque");
+    assert.equal(opaqueBody.size, "auto");
+  }
+}
 
 await generateCodexChatGPTImage({ prompt: "edit", referenceImage: `data:image/png;base64,${png}` }, dependencies);
 assert.deepEqual(JSON.parse(String(sentOptions?.body)).images, [{ image_url: `data:image/png;base64,${png}` }]);

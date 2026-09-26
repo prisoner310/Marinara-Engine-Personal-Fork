@@ -83,6 +83,8 @@ type GenerationConnectionOption = {
   name: string;
   model?: string;
   provider?: string;
+  imageService?: string | null;
+  imageGenerationSource?: string | null;
   defaultForAgents?: boolean | string;
 };
 
@@ -728,6 +730,8 @@ export function SpriteGenerationModal({
   );
   const selectedImageModel = selectedImageConnection?.model?.trim().toLowerCase() ?? "";
   const selectedModelIsGptImage2 = /^gpt-image-2(?:$|-)/.test(selectedImageModel);
+  const selectedConnectionUsesCodexImage =
+    (selectedImageConnection?.imageService || selectedImageConnection?.imageGenerationSource) === "codex_chatgpt";
 
   const openPromptReview = useCallback((items: ImagePromptReviewItem[]) => {
     return new Promise<ImagePromptOverride[] | null>((resolve) => {
@@ -2072,11 +2076,14 @@ export function SpriteGenerationModal({
                         "ui.ui.spritegenerationmodal.usesNativeTransparencyWhenAvailableOtherwiseMarinaraChoosesA",
                       )}
                 </span>
-                {!animatedExpressionMode && selectedModelIsGptImage2 && nativeTransparentPng && (
-                  <span className="mt-1 block text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
-                    {localizeUi("ui.ui.spritegenerationmodal.gptImage2DoesNotSupportNativeTransparencyRight")}
-                  </span>
-                )}
+                {!animatedExpressionMode &&
+                  selectedModelIsGptImage2 &&
+                  !selectedConnectionUsesCodexImage &&
+                  nativeTransparentPng && (
+                    <span className="mt-1 block text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
+                      {localizeUi("ui.ui.spritegenerationmodal.gptImage2DoesNotSupportNativeTransparencyRight")}
+                    </span>
+                  )}
               </span>
             </label>
 

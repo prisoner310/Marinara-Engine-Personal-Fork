@@ -224,6 +224,7 @@ type SpritePromptPlan = {
   prompt: string;
   matte: SpriteChromaMatte;
   nativeTransparentPng: boolean;
+  allowChromaFallback: boolean;
   backgroundContract: string;
   sheetWidth: number;
   sheetHeight: number;
@@ -279,8 +280,12 @@ function ensureDir(dir: string) {
   }
 }
 
-export function resolveSpriteNativeTransparency(model: string | undefined, requested: boolean): boolean {
-  return requested && !isOpenAIGptImage2Model(model);
+export function resolveSpriteNativeTransparency(
+  model: string | undefined,
+  requested: boolean,
+  service?: string,
+): boolean {
+  return requested && (service === "codex_chatgpt" || !isOpenAIGptImage2Model(model));
 }
 
 export function resolveSpriteSheetCanvas({
@@ -878,6 +883,10 @@ async function removeSpriteBackgroundPng(
   cleanupStrength = 35,
   engine: SpriteCleanupEngine = "auto",
 ): Promise<{ buffer: Buffer; engine: UsedSpriteCleanupEngine }> {
+  const matteOutput = await removeUniformSpriteBackgroundPng(input, cleanupStrength);
+  // An image with real alpha needs no background removal, even when the AI engine is configured.
+  if (matteOutput.alreadyTransparent) return { buffer: matteOutput.buffer, engine: "builtin" };
+
   const configuredEngine = engine === "auto" ? getBackgroundRemoverStatus().engine : engine;
   if (configuredEngine === "backgroundremover") {
     const aiOutput = await tryRemoveBackgroundWithBackgroundRemover(input, {
@@ -891,8 +900,7 @@ async function removeSpriteBackgroundPng(
     }
   }
 
-  const matteOutput = await removeUniformSpriteBackgroundPng(input, cleanupStrength);
-  if (configuredEngine === "builtin" || matteOutput.alreadyTransparent || matteOutput.confidence >= 0.62) {
+  if (configuredEngine === "builtin" || matteOutput.confidence >= 0.62) {
     return { buffer: matteOutput.buffer, engine: "builtin" };
   }
 
@@ -1180,6 +1188,7 @@ async function buildSpritePromptPlan(
   app: FastifyInstance,
   body: SpriteGenerateSheetBody,
   imgModel: string,
+  imgServiceHint: string,
 ): Promise<SpritePromptPlan> {
   const cols = coerceSpriteGridDimension(body.cols, 2);
   const rows = coerceSpriteGridDimension(body.rows, 3);
@@ -1199,12 +1208,18 @@ async function buildSpritePromptPlan(
   const expressionList = expressions.join(", ");
   const promptOverridesStorage = createPromptOverridesStorage(app.db);
   const trimmedAppearance = body.appearance?.trim() || "";
-  const nativeTransparentPng = resolveSpriteNativeTransparency(imgModel, body.nativeTransparentPng === true);
+  const nativeTransparentPng = resolveSpriteNativeTransparency(
+    imgModel,
+    body.nativeTransparentPng === true,
+    imgServiceHint,
+  );
+  const allowChromaFallback = imgServiceHint !== "codex_chatgpt";
   const matte = selectSpriteChromaMatte(trimmedAppearance);
   const backgroundOptions = {
     matte,
     nativeTransparentPng,
     removeBackground: body.noBackground === true,
+    allowChromaFallback,
   };
   const { sheetWidth, sheetHeight, cellWidth, cellHeight } = resolveSpriteSheetCanvas({
     cols,
@@ -1274,6 +1289,7 @@ async function buildSpritePromptPlan(
     prompt,
     matte,
     nativeTransparentPng,
+    allowChromaFallback,
     backgroundContract: spriteBackgroundContract(backgroundOptions),
     sheetWidth,
     sheetHeight,
@@ -1307,6 +1323,7 @@ async function buildIndividualFullBodyExpressionRequest({
     matte: plan.matte,
     nativeTransparentPng: plan.nativeTransparentPng,
     removeBackground: body.noBackground === true,
+    allowChromaFallback: plan.allowChromaFallback,
   });
 
   const compiledPrompt = compileSpritePrompt(sourcePrompt, {
@@ -1860,7 +1877,8 @@ export async function spritesRoutes(app: FastifyInstance) {
     const imgModel = conn.model || "";
     const imageDefaults = resolveConnectionImageDefaults(conn);
     const imageSettings = await loadImageGenerationUserSettings(app.db);
-    const plan = await buildSpritePromptPlan(app, body, imgModel);
+    const imgServiceHint = conn.imageService || (conn as any).imageGenerationSource || imgModel;
+    const plan = await buildSpritePromptPlan(app, body, imgModel, imgServiceHint);
     if (plan.expressions.length === 0) {
       return reply.status(400).send({ error: "No expressions remain after applying the requested grid size" });
     }
@@ -1913,6 +1931,7 @@ export async function spritesRoutes(app: FastifyInstance) {
             matte: plan.matte,
             nativeTransparentPng: plan.nativeTransparentPng,
             removeBackground: body.noBackground === true,
+            allowChromaFallback: plan.allowChromaFallback,
           });
           const compiledPrompt = compileSpritePrompt(expressionPrompt, {
             appearance: plan.appearance,
@@ -2226,9 +2245,9 @@ export async function spritesRoutes(app: FastifyInstance) {
     const imgServiceHint = conn.imageService || imgSource;
     const imageDefaults = resolveConnectionImageDefaults(conn);
     const imageSettings = await loadImageGenerationUserSettings(app.db);
-    const nativeTransparentPng = resolveSpriteNativeTransparency(imgModel, body.nativeTransparentPng === true);
     const shouldCleanBackground = body.noBackground === true || body.nativeTransparentPng === true;
-    const plan = await buildSpritePromptPlan(app, body, imgModel);
+    const plan = await buildSpritePromptPlan(app, body, imgModel, imgServiceHint);
+    const nativeTransparentPng = plan.nativeTransparentPng;
     if (plan.expressions.length === 0) {
       return reply.status(400).send({ error: "No expressions remain after applying the requested grid size" });
     }
@@ -2371,6 +2390,7 @@ export async function spritesRoutes(app: FastifyInstance) {
                   matte: plan.matte,
                   nativeTransparentPng,
                   removeBackground: body.noBackground === true,
+                  allowChromaFallback: plan.allowChromaFallback,
                 });
                 const compiledExpressionPrompt = compileSpritePrompt(expressionPrompt, {
                   appearance: plan.appearance,

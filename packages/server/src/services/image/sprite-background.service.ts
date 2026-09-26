@@ -68,13 +68,20 @@ export function spriteChromaMatteInstruction(matte: SpriteChromaMatte): string {
 
 export function applySpriteBackgroundInstruction(
   prompt: string,
-  options: { matte: SpriteChromaMatte; nativeTransparentPng: boolean; removeBackground: boolean },
+  options: {
+    matte: SpriteChromaMatte;
+    nativeTransparentPng: boolean;
+    removeBackground: boolean;
+    allowChromaFallback?: boolean;
+  },
 ): string {
   if (!options.nativeTransparentPng && !options.removeBackground) return prompt;
 
   const chromaFallback = spriteChromaMatteInstruction(options.matte);
   const replacement = options.nativeTransparentPng
-    ? `no background, transparent PNG format. If native transparency is unsupported, ${chromaFallback}`
+    ? options.allowChromaFallback === false
+      ? "no background, transparent PNG format"
+      : `no background, transparent PNG format. If native transparency is unsupported, ${chromaFallback}`
     : chromaFallback;
   const updated = prompt.replace(
     /\b(?:(?:solid|plain) white(?: studio)? background|white studio background|white background)\b/giu,
@@ -89,11 +96,14 @@ export function spriteBackgroundContract(options: {
   matte: SpriteChromaMatte;
   nativeTransparentPng: boolean;
   removeBackground: boolean;
+  allowChromaFallback?: boolean;
 }): string {
   if (!options.nativeTransparentPng && !options.removeBackground) return "";
   const matteInstruction = spriteChromaMatteInstruction(options.matte);
   return options.nativeTransparentPng
-    ? `MANDATORY BACKGROUND CONTRACT: output native transparency with no backdrop. If the provider cannot return alpha transparency, ${matteInstruction}.`
+    ? options.allowChromaFallback === false
+      ? "MANDATORY BACKGROUND CONTRACT: output native transparency with no backdrop."
+      : `MANDATORY BACKGROUND CONTRACT: output native transparency with no backdrop. If the provider cannot return alpha transparency, ${matteInstruction}.`
     : `MANDATORY BACKGROUND CONTRACT: ${matteInstruction}.`;
 }
 

@@ -73,3 +73,50 @@ test("ChatGPT/Codex image connection needs no API key or Base URL and keeps its 
     await request.delete(`/api/connections/${id}`);
   }
 });
+
+test("sprite prompt preview uses native alpha for Codex while Platform GPT-Image 2 keeps chroma fallback", async ({
+  request,
+}, testInfo) => {
+  const connectionIds: string[] = [];
+  try {
+    for (const service of ["codex_chatgpt", "openai"] as const) {
+      const created = await request.post("/api/connections", {
+        data: {
+          name: `${service} sprite preview ${testInfo.project.name}`,
+          provider: "image_generation",
+          baseUrl: service === "openai" ? "https://api.openai.com/v1" : "",
+          apiKey: service === "openai" ? "synthetic-key" : "",
+          model: "gpt-image-2",
+          imageGenerationSource: service,
+          imageService: service,
+        },
+      });
+      expect(created.ok()).toBeTruthy();
+      const { id } = (await created.json()) as { id: string };
+      connectionIds.push(id);
+      const preview = await request.post("/api/sprites/generate-sheet/preview", {
+        data: {
+          connectionId: id,
+          appearance: "black hair, red coat",
+          expressions: ["happy"],
+          cols: 1,
+          rows: 1,
+          spriteType: "expressions",
+          nativeTransparentPng: true,
+          noBackground: true,
+        },
+      });
+      expect(preview.ok(), await preview.text()).toBeTruthy();
+      const { items } = (await preview.json()) as { items: Array<{ prompt: string }> };
+      expect(items).toHaveLength(1);
+      if (service === "codex_chatgpt") {
+        expect(items[0]?.prompt).toContain("native transparency");
+        expect(items[0]?.prompt).not.toMatch(/chroma|#00FF00/iu);
+      } else {
+        expect(items[0]?.prompt).toMatch(/chroma green #00FF00/iu);
+      }
+    }
+  } finally {
+    for (const id of connectionIds) await request.delete(`/api/connections/${id}`);
+  }
+});

@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import {
   applySpriteBackgroundInstruction,
   removeUniformSpriteBackgroundPng,
   selectSpriteChromaMatte,
+  spriteBackgroundContract,
 } from "../../packages/server/src/services/image/sprite-background.service.js";
 import {
   buildFullBodyReferenceContract,
   resolveSpriteNativeTransparency,
   resolveSpriteSheetCanvas,
+  spritesRoutes,
 } from "../../packages/server/src/routes/sprites.routes.js";
 import type { ImageGenerationDefaultsProfile } from "../../packages/shared/src/types/image-generation-defaults.js";
 
@@ -41,9 +44,29 @@ assert.doesNotMatch(chromaOnlyPrompt, /solid white background/iu);
 assert.match(chromaOnlyPrompt, /never a painted transparency checkerboard/iu);
 assert.equal(resolveSpriteNativeTransparency("gpt-image-2", true), false);
 assert.equal(resolveSpriteNativeTransparency("gpt-image-2-preview", true), false);
+assert.equal(resolveSpriteNativeTransparency("gpt-image-2", true, "openai"), false);
+assert.equal(resolveSpriteNativeTransparency("gpt-image-2", true, "codex_chatgpt"), true);
+assert.equal(resolveSpriteNativeTransparency("gpt-image-2", false, "codex_chatgpt"), false);
 assert.equal(resolveSpriteNativeTransparency("gpt-image-1.5", true), true);
 assert.equal(resolveSpriteNativeTransparency("sdxl", true), true);
 assert.equal(resolveSpriteNativeTransparency("gpt-image-2", false), false);
+
+const codexNativeOptions = {
+  matte: selectSpriteChromaMatte("black hair, red coat"),
+  nativeTransparentPng: resolveSpriteNativeTransparency("gpt-image-2", true, "codex_chatgpt"),
+  removeBackground: true,
+  allowChromaFallback: false,
+};
+const codexNativePrompt = applySpriteBackgroundInstruction("portrait on a solid white background", codexNativeOptions);
+assert.match(codexNativePrompt, /transparent PNG/iu);
+assert.doesNotMatch(codexNativePrompt, /chroma|#00FF00/iu);
+assert.doesNotMatch(spriteBackgroundContract(codexNativeOptions), /chroma|#00FF00/iu);
+assert.match(spriteBackgroundContract(codexNativeOptions), /native transparency/iu);
+const platformGptImage2Prompt = applySpriteBackgroundInstruction("portrait on a solid white background", {
+  ...codexNativeOptions,
+  nativeTransparentPng: resolveSpriteNativeTransparency("gpt-image-2", true, "openai"),
+});
+assert.match(platformGptImage2Prompt, /chroma green #00FF00/iu);
 
 assert.deepEqual(
   resolveSpriteSheetCanvas({ cols: 1, rows: 1, spriteType: "full-body", model: "gpt-image-2" }),
@@ -200,14 +223,33 @@ const transparentPixels = solidImage(width, height, [0, 0, 0, 0]);
 for (let yPos = 12; yPos < 28; yPos++) {
   for (let xPos = 12; xPos < 28; xPos++) setPixel(transparentPixels, width, xPos, yPos, [50, 80, 220, 255]);
 }
-const transparentCleanup = await removeUniformSpriteBackgroundPng(
-  await encodeRaw(transparentPixels, width, height),
-  35,
-);
+const transparentPng = await encodeRaw(transparentPixels, width, height);
+const transparentCleanup = await removeUniformSpriteBackgroundPng(transparentPng, 35);
 assert.equal(transparentCleanup.alreadyTransparent, true);
 const transparentOutput = await decodeRaw(transparentCleanup.buffer);
 assert.equal(pixelAt(transparentOutput.data, width, 0, 0).alpha, 0);
 assert.equal(pixelAt(transparentOutput.data, width, 20, 20).blue, 220);
+
+const spriteApp = Fastify();
+try {
+  await spriteApp.register(spritesRoutes, { prefix: "/api/sprites" });
+  const cleaned = await spriteApp.inject({
+    method: "POST",
+    url: "/api/sprites/cleanup",
+    payload: {
+      cells: [{ expression: "happy", base64: transparentPng.toString("base64") }],
+      engine: "backgroundremover",
+    },
+  });
+  assert.equal(cleaned.statusCode, 200, cleaned.body);
+  assert.equal(cleaned.json().builtinProcessed, 1, "already-transparent PNG must bypass the forced AI engine");
+  const cleanedPng = Buffer.from(cleaned.json().cells[0].base64, "base64");
+  const cleanedPixels = await decodeRaw(cleanedPng);
+  assert.equal(pixelAt(cleanedPixels.data, width, 0, 0).alpha, 0);
+  assert.equal(pixelAt(cleanedPixels.data, width, 20, 20).blue, 220);
+} finally {
+  await spriteApp.close();
+}
 
 console.info("Sprite background regression passed.");
 
@@ -217,9 +259,8 @@ console.info("Sprite background regression passed.");
 // same way the gallery path does (findImageStyleProfile falls back gracefully).
 {
   const { compileSpritePrompt } = await import("../../packages/server/src/routes/sprites.routes.js");
-  const { normalizeImageStyleProfileSettings, findImageStyleProfile } = await import(
-    "../../packages/shared/src/constants/image-style-profiles.js"
-  );
+  const { normalizeImageStyleProfileSettings, findImageStyleProfile } =
+    await import("../../packages/shared/src/constants/image-style-profiles.js");
   const settings = normalizeImageStyleProfileSettings(null);
   const nonDefault = settings.profiles.find((profile) => profile.id !== settings.defaultProfileId);
   assert.ok(nonDefault, "built-in profiles must include a non-default profile for this regression");
@@ -255,7 +296,10 @@ console.info("Sprite background regression passed.");
     seed: 0,
     styleProfileId: nonDefault.id,
   };
-  const viaConnectionDefault = compileSpritePrompt("sprite of the subject", { ...base, imageDefaults: connectionDefault });
+  const viaConnectionDefault = compileSpritePrompt("sprite of the subject", {
+    ...base,
+    imageDefaults: connectionDefault,
+  });
   assert.deepEqual(
     viaConnectionDefault,
     overridden,

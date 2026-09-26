@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- ChatGPT / Codex Image now sends requested image dimensions and transparent background settings for generation and edits. Sprite prompts request native transparency through this connection without chroma instructions, while other providers keep their existing fallback. Background cleanup preserves PNGs that already have alpha, even when the AI cleanup engine is configured.
 - ChatGPT / Codex Image now edits images when given up to five references, while text-only requests keep the existing generation path. Oversized or invalid reference sets return clear errors.
 - Added a ChatGPT / Codex Image connection that generates one text-to-image result with the local `codex login` session, without an OpenAI API key. Its connection check validates the login without generating an image.
 - Consolidated root coding-agent guidance in `AGENTS.md` and updated contributor and reviewer references after removing the duplicate `CLAUDE.md`. Removed the obsolete `MARI_SUGGESTION_CHIPS_TASK.md` implementation brief (#6504).
