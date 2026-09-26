@@ -6,8 +6,8 @@
 
 - 目的: Marinara Engineの通常のImage Generation Connectionで、既存の`codex login`によるChatGPT OAuthを使い、別のOpenAI Platform API Keyなしで画像生成・参照画像編集を利用する。
 - 作業branch: `personal/codex-image`。`origin`は個人fork `prisoner310/Marinara-Engine-Personal-Fork`、`upstream`は公式 `Pasta-Devs/Marinara-Engine`。個人branchだけに通常pushし、公式側へのpush・PRはしていない。
-- 履歴: Phase 1 `ec3ab4bcc`（OAuth画像接続）、Phase 2A `1a4b0cf74`（参照画像編集）、共有メモ追加 `31776fbd0`。公式mainの `12a0acd5b` を基点とする個人branch上のコミット。
-- **最後に確認した基点commit SHA:** `31776fbd0`。Phase 2A.5を含む現在のHEADは `git log -1` で確認する。
+- 履歴: Phase 1 `ec3ab4bcc`（OAuth画像接続）、Phase 2A `1a4b0cf74`（参照画像編集）、共有メモ追加 `31776fbd0`、Phase 2A.5 `ca99b312d`（透過・サイズ対応）。公式mainの `12a0acd5b` を基点とする個人branch上のコミット。
+- **最後に確認した実装commit SHA:** `ca99b312d2e841e9653a1ab7b08e2b8260ceb2d5`。このメモを含む最新HEADは `git log -1` で確認する。
 
 ## 実装済みと実画像の確認状況
 
