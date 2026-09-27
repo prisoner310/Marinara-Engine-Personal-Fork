@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- ChatGPT / Codex Image reference edits now let the main prompt define each reference image's purpose; the connection's added guidance only prevents copying a reference's canvas shape.
 - ChatGPT / Codex Image now adds the requested canvas orientation and aspect ratio to image prompts. Reference edits also avoid copying the source canvas shape; Sprite prompts keep their existing layout instructions.
 - ChatGPT / Codex Image debug logs now show the requested, sent, declared, and actual PNG sizes for generation and edits, so size mismatches can be diagnosed without exposing prompts or image data.
 - ChatGPT / Codex Image now sends requested image dimensions and transparent background settings for generation and edits. Sprite prompts request native transparency through this connection without chroma instructions, while other providers keep their existing fallback. Background cleanup preserves PNGs that already have alpha, even when the AI cleanup engine is configured.

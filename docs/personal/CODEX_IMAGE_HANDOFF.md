@@ -6,8 +6,8 @@
 
 - 目的: Marinara Engineの通常のImage Generation Connectionで、既存の`codex login`によるChatGPT OAuthを使い、別のOpenAI Platform API Keyなしで画像生成・参照画像編集を利用する。
 - 作業branch: `personal/codex-image`。`origin`は個人fork `prisoner310/Marinara-Engine-Personal-Fork`、`upstream`は公式 `Pasta-Devs/Marinara-Engine`。個人branchだけに通常pushし、公式側へのpush・PRはしていない。
-- 履歴: Phase 1 `ec3ab4bcc`（OAuth画像接続）、Phase 2A `1a4b0cf74`（参照画像編集）、共有メモ追加 `31776fbd0`、Phase 2A.5 `ca99b312d`（透過・サイズ対応）、Phase 2A.6 `f30df8929`（サイズ診断）、Phase 2A.7 `a2b807657`（比率prompt補助）。公式mainの `12a0acd5b` を基点とする個人branch上のコミット。
-- **最後に確認した実装commit SHA:** `a2b807657320dbde8e29eaba4a647a731533e7a5`。このメモを含む最新HEADは `git log -1` で確認する。
+- 履歴: Phase 1 `ec3ab4bcc`（OAuth画像接続）、Phase 2A `1a4b0cf74`（参照画像編集）、共有メモ追加 `31776fbd0`、Phase 2A.5 `ca99b312d`（透過・サイズ対応）、Phase 2A.6 `f30df8929`（サイズ診断）、Phase 2A.7 `a2b807657`（比率prompt補助）、Phase 2A.8（本変更: 参照用途を決め打ちしない）。公式mainの `12a0acd5b` を基点とする個人branch上のコミット。
+- **Phase 2A.8作業前に最後に確認したHEAD SHA:** `f03b2c24b15070277ab160bef392273a55b5014f`。本変更を含む最新commit SHAは `git log -1` で確認する。
 
 ## 実装済みと実画像の確認状況
 
@@ -18,7 +18,8 @@
 - **Phase 2A.6の実機診断:** ME要求と送信`size`は一致したが、Codexのresponse宣言とPNG実寸はともに別サイズだった。参照付きCharacter Sheetは参照1206×1305・要求896×1152→出力1205×1305、Avatarは参照1037×1516・同要求→1038×1516（両方`quality=low`）。参照なし生成は要求896×1152→1145×1374、正方形要求1024×1024でも1145×1374（両方`quality=medium`）。editは参照canvasへ強く寄り、generationでもAPIの`size`は厳密なpixel数・比率を保証しない。Spriteの見た目が安定していても、強いlayout contractがあるためAPI `size`が効いた証拠にはしない。
 - **prompt指定の実機診断:** 通常生成で896×1152をpromptへ書くと1106×1422（縦長に近い比率）。縦長参照1037×1516から正方形をprompt指定したeditは1254×1254、正方形参照1254×1254から892×1152の縦長をprompt指定したeditは1106×1422。promptのcanvas形状・比率指定には一定の効果があるが、pixel-perfectは保証されない。
 - **Phase 2A.6の診断ログ:** generation/edit共通adapterがdebug levelで`[codex-image] endpoint=... requested=... sent=... response=... actual=... background=... quality=...`を1行記録する。`actual`はPNGのIHDR寸法。responseのmetadataが無くても成功し、寸法不一致もエラーにしない。token、account ID、prompt、画像base64はこの行に含めない。Phase 2A.7後も維持する。
-- **Phase 2A.7:** Codex接続で有効なwidth/heightがある場合、orientation、最大公約数で約分した比率、nominal pixel sizeを画像promptへ追加する。editは参照画像のidentity・視覚情報・styleと要求された変更を保ちつつ、参照canvasを継承しないよう案内する。Spriteの3生成経路は既存layout contractを優先し、補助文を追加しない。APIの`size`と診断ログを残す。厳密なpixel一致は保証しない。
+- **Phase 2A.7:** Codex接続で有効なwidth/heightがある場合、orientation、最大公約数で約分した比率、nominal pixel sizeを画像promptへ追加する。Spriteの3生成経路は既存layout contractを優先し、補助文を追加しない。APIの`size`と診断ログを残す。厳密なpixel一致は保証しない。
+- **Phase 2A.8:** Codex adapterのedit補助文からidentity・visual details・art style・requested editの用途指定を削除。参照画像のcanvas寸法・比率を継承しない案内と、Phase 2A.7のTarget canvas誘導だけに限定する。参照画像の用途はmain promptを権威とし、adapterにreference role分類は設けない。API `size`を維持し、生成画像を後処理でresize・crop・paddingしない。Phase 2A.7の実機確認結果は文面変更前の観測であり、変更後の実画像は未確認。
 - **Phase 2A.7実機確認済み:** 参照なしSelfieは要求896×1152→1106×1422（7:9）、1024×1024→1254×1254（1:1）。参照付きSelfieは正方形参照1254×1254から要求896×1152→1106×1422、縦長参照1037×1516から要求1024×1024→1254×1254。Character Sheetは正方形参照1254×1254から要求1280×720→1672×941（ほぼ16:9）。5件ともCodexのresponse宣言とPNG実寸は一致し、出力比率は要求に沿った。表情Spriteの一括生成も動作確認済み。**実用上の比率誘導は成功、pixel数の完全一致は未達・非目標。**
 - 上記alphaは**現在のChatGPT / Codex経路で観測された事実**。GPT-Image 2そのものの公式alpha対応やCodex内部での実モデルへのルーティングは確定していない。自動テストでは実アカウントを使っていない。
 
@@ -29,6 +30,7 @@
 - 認証は既存の`getOpenAIChatGPTAuth()`と`buildOpenAIChatGPTHeaders()`を再利用する。画像ごとにCodex CLIを起動しない。接続固有のURL・request・response変換は小さなadapterに閉じ込め、DB migrationと保存方式の変更を避ける。
 - ChatGPT Codexのbase URLは `https://chatgpt.com/backend-api/codex`。`x-codex-image-turn-id`を付け、`safeFetch`のHTTPS制限を維持する。認証情報・参照画像base64をログやエラー文へ出さない。外部画像URLを取得しない。
 - promptとnegative promptの組み立て、OAuth header、レスポンス解析、HTTPエラー変換はgeneration/editで共通。model=`gpt-image-2`、quality=`auto`、出力は1枚のPNG。MEのnegative promptは専用parameterではなく、`Do not include: ...`という自然文でmain promptへ追記する。
+- **参照画像の用途はME本体の上流promptが担当する。** Selfieは`resolveIllustratorCharacterReferences()`からの`referenceLine`でcharacter likenessとvisual identityを指定する。spatial locationは`SPATIAL_LOCATION_REFERENCE_PROMPT_LINE`で場所として扱う。Illustrateは場所画像を先頭に人物画像を続け、人物と場所を別々に説明する。Game sceneもcharacter referenceとlocation referenceの説明を別々に構築する。Codex adapterはreference内容・用途を解釈せず、有効なwidth/heightがある場合に参照canvasの継承回避とTarget canvasのみを追加する。独自のreference role systemは作らない。
 - MEのIllustrateは`imageSettings.illustration`（Gameでは`game`）とIllustratorの`aspectRatio`を`resolveIllustratorImageSize()`へ渡し、そのwidth/heightを`generateImage()`へ渡す。`portrait`は縦長、`landscape`は横長に並べ替え、`square`は短辺で正方形にする（Illustration既定896x1280なら順に896x1280、1280x896、896x896）。Selfieは`chatMeta.selfieResolution`が有効なら優先し、なければ`imageSettings.selfie.width/height`を`generateImage()`へ渡す。これらのGallery保存時のwidth/heightは要求値を再使用しており、**実PNGの寸法と異なる可能性がある**。Phase 2A.6では保存値の意味を変えない。
 - Spriteのprompt reviewと実生成は同じ接続種別付きの計画を使う。Codexのネイティブ透過要求には`#00FF00`等を入れず、他providerには従来のfallbackを残す。返った画像に既にalphaがある場合、既存の`alreadyTransparent`判定を背景除去エンジンの選択より先に行い、AIエンジンを明示した場合も画像を保護する。
 - 既存のOpenAI Platform画像接続は別実装。GPT-Image 2.5はPlatform側にあっても、この接続では**Codex側が画像モデルの明示選択を提供するまで保留**し、モデルIDだけを推測して切り替えない。
@@ -36,11 +38,12 @@
 
 ## 制約と次の課題
 
-- **次の任意の改善:** 補助文はadapterが送信直前に加えるため、生成前のpromptプレビュー・編集画面には表示されない。将来表示するなら、レビューに出す文と実送信文が重複・乖離しない設計が必要。現在のedit補助文は`subject identity`等を含むが、参照画像は人物以外にも使われるため、汎用的な文面への見直し候補として残す。今回の実機成功を保つため、どちらもこの確認作業では変更しない。
-- 比率が不安定になる場合の候補は、Codex固有のUI注記、対応サイズの実測とmapping、後処理resize/crop等。現時点では選ばない。`LOG_LEVEL=debug`の`[codex-image]`行は今後も確認に使えるが、debug出力全体には他経路のprompt等があり得るため、共有するのはこの1行だけにする。
+- **本家取り込み向けの任意の改善:** Connection説明と`docs/media/image-providers.md`に、要求したpixel数と実出力のpixel数は一致しない場合があることを明記する。参照画像比較表にCodex接続の最大5枚を記載する。Prompt Reviewはadapterが送信直前に足すcanvas文をまだ表示しないため、将来は編集promptへ混ぜるよりread-onlyの「Provider additions」表示を検討する。表示と実送信を一致させ、二重挿入を防ぐ必要がある。既存画像Connectionとの差分監査も候補。
+- Avatar / Character SheetはreferenceImagesを渡せるが、Selfieの`referenceLine`相当の用途説明はこの経路では確認できなかった。必要なら**provider共通のME本体側課題**として検討し、Codex adapterだけで補わない。
+- pixel-perfect sizeは完成条件に含めない。API `size`は維持するが、生成後のresize・crop・paddingは行わずnative imageをそのまま使う。比率が不安定なら実測とCodex側仕様を再確認する。`LOG_LEVEL=debug`の`[codex-image]`行は今後も確認に使えるが、debug出力全体には他経路のprompt等があり得るため、共有するのはこの1行だけにする。
 - Spriteの小さいキャンバス等、backendが受け付けるサイズ範囲は実機未確定。Codex Images request型の`String`は任意サイズの受理を保証しない。
 - generation IDを使った再編集、mask、quality UI、モデル選択、複数出力は未対応。6枚以上の参照画像を自動選択せず、エラーで知らせる。
-- **Phase 2B候補:** シーンに出るキャラクターの画像を自動参照する際の優先順位と5枚制限。既存の`game.routes.ts`は`collectIllustrationCharacterAssets()`で登場人物の参照画像を集め、`illustrator-references.ts`は設定されたcharacter sheet、avatar、spriteの順で候補を読む。背景の場所画像も先に入る場合がある。シーン側のprovider別上限はCodex固有に調整されていないため、6枚以上では現在のadapterが明示的に拒否し得る。これらのシーン処理はPhase 2Aでは変更していない。
+- **将来の任意検討:** シーンに出るキャラクターの画像を自動参照する際の優先順位と5枚制限。既存の`game.routes.ts`は`collectIllustrationCharacterAssets()`で登場人物の参照画像を集め、`illustrator-references.ts`は設定されたcharacter sheet、avatar、spriteの順で候補を読む。背景の場所画像も先に入る場合がある。シーン側のprovider別上限はCodex固有に調整されていないため、6枚以上では現在のadapterが明示的に拒否し得る。Illustrator Agent内部のreference selectionやCodex専用のcharacter/location selectionは現時点の完成条件ではない。
 - **さらに先の候補:** generation IDによる連続編集、mask、quality設定、size調整、複数出力。GPT-Image 2.5の検討はCodex側の明示的なモデル選択を確認してから行う。
 - 起動時更新で未追跡のadapterが消えた過去の報告がある。現在のadapterは個人branchに追跡・push済み。起動や更新後、branchと`git status`を確認する。
 
@@ -49,7 +52,7 @@
 | ファイル | 役割 |
 | --- | --- |
 | `packages/server/src/services/llm/openai-chatgpt-auth.ts` | 既存のCodex ChatGPTログイン取得・更新 |
-| `packages/server/src/services/image/openai-chatgpt-image.ts` | generation/edit切替、参照・透過・サイズ変換、Codex専用canvas補助文、HTTP、PNG結果・寸法診断 |
+| `packages/server/src/services/image/openai-chatgpt-image.ts` | generation/edit切替、参照・透過・サイズ変換、参照用途を決めないCodex専用canvas補助文、HTTP、PNG結果・寸法診断 |
 | `packages/server/src/services/image/image-generation.ts`・`packages/server/src/routes/sprites.routes.ts` | 共通`generateImage()`の振り分け、Sprite専用のcanvas補助文除外 |
 | `packages/server/src/services/image/image-generation-settings.ts`・`packages/server/src/routes/generate.routes.ts`・`packages/server/src/services/generation/conversation-selfie-command-runtime.ts` | Illustrate/Selfieの要求サイズ決定・伝搬・Gallery保存（Phase 2A.6では未変更） |
 | `packages/server/src/routes/sprites.routes.ts`・`packages/server/src/services/image/sprite-background.service.ts` | 接続別透過判定、Sprite prompt、alpha画像の背景除去skip |
@@ -63,5 +66,6 @@
 - Phase 2A.5時点の結果: `corepack pnpm check`成功（build・型検査・lint込み。未変更の`GameNarration.tsx`に既存lint警告1件）。Codex画像、Sprite背景（alpha PNGが強制AI背景除去を回避する検証を含む）、GPT-Image 2.5、画像custom parameters、画像サイズ制限の回帰は全件成功。Codex接続画面e2eはdesktop Chromium / mobile Chromium / mobile WebKitの3件成功。Spriteプレビューe2eも同3環境で3件成功。
 - Phase 2A.6時点の結果: `corepack pnpm check`成功（build・型検査・lint込み。既存の`GameNarration.tsx`警告1件）。Codex画像、画像サイズ制限、画像custom parameters、`open-issues`（Illustrate縦横正方形・Selfieサイズ伝搬を含む）、`prompt`（Selfie関連を含む）の回帰は各1/1成功。Codex mockは要求896x1280→送信896x1280、response宣言1024x1536、実PNGのIHDR読取、宣言なし、生成/edit共通、不一致時の成功、機密値のログ除外を確認。UI変更がないためPhase 2A.6でe2eは再実行していない。
 - Phase 2A.7時点の結果: `corepack pnpm check`成功（build・型検査・lint込み。未変更の`GameNarration.tsx`に既存lint警告1件）。Codex画像、Sprite背景、画像サイズ制限、画像custom parameters、GPT-Image 2.5、`open-issues`、`prompt`のmock回帰は各1/1成功。896×1152→7:9 portrait、1280×720→16:9 landscape、1024×1024→1:1 square、参照付きeditのcanvas継承回避、invalid寸法で`size=auto`、negative prompt、Spriteの補助文除外を確認。UI変更がないためe2eは再実行していない。実画像は上記の5件とSprite一括生成で確認済み。
+- Phase 2A.8時点の結果: `corepack pnpm check`成功（build・型検査・lint込み。未変更の`GameNarration.tsx`に既存lint警告1件）。Codex画像、`open-issues`、`prompt`、Sprite背景の回帰は各1/1成功。mockで参照editの用途中立なcanvas文、main promptの用途説明の保持、参照なしgeneration、7:9/16:9/1:1、negative prompt、invalid寸法の`size=auto`、Sprite補助文除外を確認。Phase 2A.8の文面変更後の実画像生成は未実施。UI変更がないためe2eは再実行していない。
 - mockは合成画像・合成認証情報のみを使う。Test Connectionは画像を生成しないが、**Test Imageと手動Editは実際に画像利用枠を使う**。
 - このWindows環境ではリポジトリ指定のpnpm 10を`corepack pnpm`で使用。サンドボックス内のPlaywrightブラウザ起動は`EPERM`になったため、ブラウザーテストだけ許可された環境で実行した。PlaywrightのwebServer終了待ちが止まる場合、起動済みテストサーバーで`PLAYWRIGHT_SKIP_WEBSERVER=true`として結果を確定できた。

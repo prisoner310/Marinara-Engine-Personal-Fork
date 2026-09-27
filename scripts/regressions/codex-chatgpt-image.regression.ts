@@ -113,7 +113,7 @@ for (const [width, height, orientation, ratio] of [
   assert.equal(body.size, `${width}x${height}`);
   assert.ok(body.prompt.includes(`Target canvas: ${orientation}, ${ratio} aspect ratio`));
   assert.ok(body.prompt.includes(`nominal size ${width} x ${height} pixels`));
-  assert.equal(body.prompt.includes("reference material"), false);
+  assert.equal(body.prompt.includes("Do not inherit the canvas dimensions or aspect ratio"), false);
 }
 
 // Size metadata is observational: a declared size mismatch must not reject either route.
@@ -179,7 +179,7 @@ assert.deepEqual(JSON.parse(String(sentOptions?.body)), {
   model: CODEX_CHATGPT_IMAGE_MODEL,
   prompt:
     "change the pose\n\n" +
-    "Use the reference material for subject identity, relevant visual details, and art style while following the requested edit. Do not inherit its canvas dimensions or aspect ratio.\n" +
+    "Do not inherit the canvas dimensions or aspect ratio of the attached reference images.\n" +
     "Target canvas: landscape, 16:9 aspect ratio (nominal size 1280 x 720 pixels).\n" +
     "Compose the final image for this aspect ratio.\n\nDo not include: text.",
   background: "transparent",
@@ -190,6 +190,33 @@ assert.equal((sentOptions?.headers as Record<string, string>).Authorization, `Be
 assert.equal((sentOptions?.headers as Record<string, string>)["ChatGPT-Account-ID"], auth.accountId);
 assert.match((sentOptions?.headers as Record<string, string>)["x-codex-image-turn-id"], /^[0-9a-f-]{36}$/u);
 assert.equal(String(sentOptions?.body).includes(token), false);
+
+// Reference meaning belongs to the main prompt; the Codex-only addition controls canvas shape only.
+const mainReferencePrompt = "Use the image for location and character likeness; follow the written art style.";
+await generateCodexChatGPTImage(
+  { prompt: mainReferencePrompt, referenceImage: png, width: 896, height: 1152 },
+  dependencies,
+);
+const sentReferencePrompt = (JSON.parse(String(sentOptions?.body)) as { prompt: string }).prompt;
+assert.ok(sentReferencePrompt.startsWith(`${mainReferencePrompt}\n\n`));
+const addedCanvasHint = sentReferencePrompt.slice(mainReferencePrompt.length + 2);
+assert.equal(
+  addedCanvasHint,
+  "Do not inherit the canvas dimensions or aspect ratio of the attached reference images.\n" +
+    "Target canvas: portrait, 7:9 aspect ratio (nominal size 896 x 1152 pixels).\n" +
+    "Compose the final image for this aspect ratio.",
+);
+for (const role of [
+  "subject identity",
+  "character identity",
+  "visual details",
+  "art style",
+  "character likeness",
+  "location",
+  "requested edit",
+]) {
+  assert.equal(addedCanvasHint.toLowerCase().includes(role), false);
+}
 
 // Generation and edit share background/size mapping, including invalid dimensions.
 for (const referenceImage of [undefined, png]) {

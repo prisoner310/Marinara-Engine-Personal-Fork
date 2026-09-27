@@ -162,9 +162,7 @@ function codexCanvasHint(dimensions: { width: number; height: number }, hasRefer
   const orientation = width === height ? "square" : width < height ? "portrait" : "landscape";
   return [
     ...(hasReferences
-      ? [
-          "Use the reference material for subject identity, relevant visual details, and art style while following the requested edit. Do not inherit its canvas dimensions or aspect ratio.",
-        ]
+      ? ["Do not inherit the canvas dimensions or aspect ratio of the attached reference images."]
       : []),
     `Target canvas: ${orientation}, ${width / divisor}:${height / divisor} aspect ratio (nominal size ${width} x ${height} pixels).`,
     "Compose the final image for this aspect ratio.",
