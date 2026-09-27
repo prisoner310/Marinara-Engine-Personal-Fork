@@ -58,7 +58,7 @@ Cloud service with the default Base URL `https://api.openai.com/v1`. It needs an
 
 Cloud service that reuses your local `codex login` ChatGPT OAuth session. It needs no OpenAI Platform API key or Base URL. With no reference images, it generates one PNG from a text prompt using the fixed Codex GPT Image model. With 1–5 reference images, it sends an image edit request and returns one PNG. More than 5 distinct reference images produce an error rather than silently dropping any. The connection check validates the local login without generating an image.
 
-Marinara sends your requested width and height to Codex and also guides the target aspect ratio in the image prompt. Codex may return a different exact pixel size. Marinara keeps and displays the generated PNG at its native dimensions without resizing it. When prompt review is enabled, its read-only **Provider additions** section shows the canvas guidance that Marinara will send.
+Marinara sends your requested width and height to Codex and also guides the target aspect ratio in the image prompt. Codex may return different exact pixel dimensions. Some Marinara image workflows may still apply their normal post-processing when saving generated assets. When prompt review is enabled, its read-only **Provider additions** section shows the canvas guidance that Marinara will send.
 
 To try one edit, open a character that already has an avatar, choose **Generate Character Avatar**, select the ChatGPT / Codex Image connection, keep **Use current avatar as a reference** enabled, enter a short appearance change, and choose **Generate**. Review the preview before choosing **Use Avatar**; generating uses your ChatGPT/Codex image allowance.
 
