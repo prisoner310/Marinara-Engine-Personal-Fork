@@ -88,7 +88,9 @@ assert.equal(sentUrl, `${OPENAI_CHATGPT_CODEX_BASE_URL}/images/generations`);
 assert.equal(sentOptions?.method, "POST");
 assert.deepEqual(JSON.parse(String(sentOptions?.body)), {
   model: CODEX_CHATGPT_IMAGE_MODEL,
-  prompt: "a red fox\n\nDo not include: text.",
+  prompt:
+    "a red fox\n\nTarget canvas: square, 1:1 aspect ratio (nominal size 1024 x 1024 pixels).\n" +
+    "Compose the final image for this aspect ratio.\n\nDo not include: text.",
   background: "opaque",
   quality: "auto",
   size: "1024x1024",
@@ -100,6 +102,19 @@ assert.match(headers["x-codex-image-turn-id"], /^[0-9a-f-]{36}$/u);
 assert.equal(String(sentOptions?.body).includes(token), false);
 assert.equal(sentOptions?.policy?.allowLocal, false);
 assert.match(diagnosticLines.at(-1) ?? "", /endpoint=generation requested=1024x1024 sent=1024x1024 response=<absent> actual=1x1/u);
+
+for (const [width, height, orientation, ratio] of [
+  [896, 1152, "portrait", "7:9"],
+  [1280, 720, "landscape", "16:9"],
+  [900, 1000, "portrait", "9:10"],
+] as const) {
+  await generateCodexChatGPTImage({ prompt: "a landscape or portrait", width, height }, dependencies);
+  const body = JSON.parse(String(sentOptions?.body)) as { prompt: string; size: string };
+  assert.equal(body.size, `${width}x${height}`);
+  assert.ok(body.prompt.includes(`Target canvas: ${orientation}, ${ratio} aspect ratio`));
+  assert.ok(body.prompt.includes(`nominal size ${width} x ${height} pixels`));
+  assert.equal(body.prompt.includes("reference material"), false);
+}
 
 // Size metadata is observational: a declared size mismatch must not reject either route.
 responseBody = {
@@ -162,7 +177,11 @@ assert.equal(sentOptions?.method, "POST");
 assert.deepEqual(JSON.parse(String(sentOptions?.body)), {
   images: [{ image_url: `data:image/png;base64,${png}` }],
   model: CODEX_CHATGPT_IMAGE_MODEL,
-  prompt: "change the pose\n\nDo not include: text.",
+  prompt:
+    "change the pose\n\n" +
+    "Use the reference material for subject identity, relevant visual details, and art style while following the requested edit. Do not inherit its canvas dimensions or aspect ratio.\n" +
+    "Target canvas: landscape, 16:9 aspect ratio (nominal size 1280 x 720 pixels).\n" +
+    "Compose the final image for this aspect ratio.\n\nDo not include: text.",
   background: "transparent",
   quality: "auto",
   size: "1280x720",
@@ -191,10 +210,29 @@ for (const referenceImage of [undefined, png]) {
     { width: 1024.5, height: 1024 },
   ]) {
     await generateCodexChatGPTImage({ prompt: "opaque subject", referenceImage, ...dimensions }, dependencies);
-    const opaqueBody = JSON.parse(String(sentOptions?.body)) as { background: string; size: string };
+    const opaqueBody = JSON.parse(String(sentOptions?.body)) as { background: string; size: string; prompt: string };
     assert.equal(opaqueBody.background, "opaque");
     assert.equal(opaqueBody.size, "auto");
+    assert.equal(opaqueBody.prompt, "opaque subject");
   }
+}
+
+// Sprite callers keep their existing canvas contract, with no second generic instruction.
+for (const referenceImage of [undefined, png]) {
+  await generateCodexChatGPTImage(
+    {
+      prompt: "MANDATORY SPRITE SHEET LAYOUT: target output canvas is 1024x1536 pixels.",
+      negativePrompt: "blur",
+      width: 1024,
+      height: 1536,
+      referenceImage,
+      skipCodexCanvasHint: true,
+    },
+    dependencies,
+  );
+  const body = JSON.parse(String(sentOptions?.body)) as { prompt: string; size: string };
+  assert.equal(body.size, "1024x1536");
+  assert.equal(body.prompt, "MANDATORY SPRITE SHEET LAYOUT: target output canvas is 1024x1536 pixels.\n\nDo not include: blur.");
 }
 
 await generateCodexChatGPTImage({ prompt: "edit", referenceImage: `data:image/png;base64,${png}` }, dependencies);

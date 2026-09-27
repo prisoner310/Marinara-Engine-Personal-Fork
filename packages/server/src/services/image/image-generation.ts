@@ -122,6 +122,8 @@ export interface ImageGenRequest {
   negativePrompt?: string;
   width?: number;
   height?: number;
+  /** Sprite prompts already define their own canvas contract; omit Codex's general canvas hint. */
+  skipCodexCanvasHint?: boolean;
   model?: string;
   /** For endpoint-based image services (e.g. RunPod): the endpoint/instance ID. */
   imageEndpointId?: string;

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import {
@@ -19,6 +20,9 @@ import type { ImageGenerationDefaultsProfile } from "../../packages/shared/src/t
 // declared instead of from this root-level regression script.
 const requireFromServer = createRequire(new URL("../../packages/server/package.json", import.meta.url));
 const sharp = requireFromServer("sharp");
+const spriteRouteSource = readFileSync(new URL("../../packages/server/src/routes/sprites.routes.ts", import.meta.url), "utf8");
+assert.equal(spriteRouteSource.match(/generateImage\(/gu)?.length, 3);
+assert.equal(spriteRouteSource.match(/skipCodexCanvasHint: true/gu)?.length, 3);
 
 assert.equal(selectSpriteChromaMatte("black hair, red coat").id, "green");
 assert.equal(selectSpriteChromaMatte("long green hair, emerald dress").id, "magenta");
