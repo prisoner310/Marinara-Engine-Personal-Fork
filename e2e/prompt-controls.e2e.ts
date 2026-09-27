@@ -123,7 +123,14 @@ test("typed illustration prompts wait for review and send only the confirmed sub
             detail: {
               chatId: id,
               resultData: { prompt: "A reviewed scene", characters: [] },
-              item: { id: "conversation-review", kind: "illustration", title: "Scene", prompt: "A reviewed scene" },
+              item: {
+                id: "conversation-review",
+                kind: "illustration",
+                title: "Scene",
+                prompt: "A reviewed scene",
+                providerAdditions:
+                  "Target canvas: portrait, 7:9 aspect ratio (nominal size 896 x 1152 pixels).\nCompose the final image for this aspect ratio.",
+              },
             },
           }),
         ),
@@ -131,6 +138,9 @@ test("typed illustration prompts wait for review and send only the confirmed sub
     );
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("textbox")).toHaveValue("A reviewed scene");
+    await expect(dialog.getByText("Provider additions · ChatGPT / Codex Image")).toBeVisible();
+    await expect(dialog.getByRole("note")).toContainText("Target canvas: portrait, 7:9 aspect ratio");
+    await expect(dialog.getByRole("textbox")).toHaveCount(1);
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(dialog).not.toBeVisible();
     expect(calls).toHaveLength(1);

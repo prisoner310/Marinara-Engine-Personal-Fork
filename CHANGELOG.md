@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- ChatGPT / Codex Image now explains that requested dimensions guide the aspect ratio while output pixel size can differ, and shows its canvas guidance separately during prompt review.
 - ChatGPT / Codex Image reference edits now let the main prompt define each reference image's purpose; the connection's added guidance only prevents copying a reference's canvas shape.
 - ChatGPT / Codex Image now adds the requested canvas orientation and aspect ratio to image prompts. Reference edits also avoid copying the source canvas shape; Sprite prompts keep their existing layout instructions.
 - ChatGPT / Codex Image debug logs now show the requested, sent, declared, and actual PNG sizes for generation and edits, so size mismatches can be diagnosed without exposing prompts or image data.

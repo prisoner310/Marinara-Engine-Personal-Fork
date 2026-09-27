@@ -278,7 +278,10 @@ import {
   resolveConnectionImageDefaults,
   resolveConnectionImageQuality,
 } from "../services/image/image-generation-defaults.js";
-import { resolveImagePromptReviewSize } from "../services/image/image-prompt-review.js";
+import {
+  resolveImagePromptReviewProviderAdditions,
+  resolveImagePromptReviewSize,
+} from "../services/image/image-prompt-review.js";
 import {
   mergeSpatialLocationReferenceImages,
   resolveSpatialLocationReferenceImage,
@@ -12722,6 +12725,11 @@ export async function gameRoutes(app: FastifyInstance) {
               negativePrompt: compiled.negativePrompt,
               width: previewSize.width,
               height: previewSize.height,
+              providerAdditions: resolveImagePromptReviewProviderAdditions({
+                connection: imgConn,
+                ...previewSize,
+                hasReferences: illustrationAssets.referenceImages.length > 0,
+              }),
             };
           }),
         );
@@ -13540,6 +13548,8 @@ export async function gameRoutes(app: FastifyInstance) {
         height: size.height,
         imageDefaults: imgDefaults,
       });
+    const providerAdditionsFor = (size: ImageGenerationSize, hasReferences = false) =>
+      resolveImagePromptReviewProviderAdditions({ connection: imgConn, ...size, hasReferences });
     const promptOverridesStorage = createPromptOverridesStorage(app.db);
     const promptOverrideById = new Map(
       (input.promptOverrides ?? []).map((item) => [
@@ -13595,6 +13605,7 @@ export async function gameRoutes(app: FastifyInstance) {
       negativePrompt?: string;
       width: number;
       height: number;
+      providerAdditions?: string;
     }> = [];
     let resolvedIllustration: Pick<SceneIllustrationRequest, "prompt" | "characters"> | undefined;
 
@@ -13640,6 +13651,7 @@ export async function gameRoutes(app: FastifyInstance) {
         negativePrompt: compiledReviewPrompt.negativePrompt,
         width: previewSize.width,
         height: previewSize.height,
+        providerAdditions: providerAdditionsFor(previewSize),
       });
     }
 
@@ -13765,6 +13777,7 @@ export async function gameRoutes(app: FastifyInstance) {
           negativePrompt: compiledReviewPrompt.negativePrompt,
           width: previewSize.width,
           height: previewSize.height,
+          providerAdditions: providerAdditionsFor(previewSize, illustrationAssets.referenceImages.length > 0),
         });
       }
     }
@@ -13845,6 +13858,7 @@ export async function gameRoutes(app: FastifyInstance) {
             negativePrompt: compiledReviewPrompt.negativePrompt,
             width: previewSize.width,
             height: previewSize.height,
+            providerAdditions: providerAdditionsFor(previewSize),
           };
         }
       };

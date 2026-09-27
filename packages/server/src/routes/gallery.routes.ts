@@ -47,6 +47,7 @@ import {
   resolveImageStyleGuidanceText,
 } from "../services/image/image-prompt-compiler.js";
 import {
+  resolveImagePromptReviewProviderAdditions,
   resolveImagePromptReviewSize,
   resolveReviewedImagePromptSubmission,
 } from "../services/image/image-prompt-review.js";
@@ -1433,6 +1434,11 @@ export async function galleryRoutes(app: FastifyInstance) {
             ...(providerNegativePrompt ? { negativePrompt: providerNegativePrompt } : {}),
             width: previewSize.width,
             height: previewSize.height,
+            providerAdditions: resolveImagePromptReviewProviderAdditions({
+              connection: imageConn,
+              ...previewSize,
+              hasReferences: Boolean(referenceImages?.length),
+            }),
           },
         ],
       };
@@ -1538,6 +1544,11 @@ export async function galleryRoutes(app: FastifyInstance) {
             negativePrompt: compiled.negativePrompt,
             width: compiled.width,
             height: compiled.height,
+            providerAdditions: resolveImagePromptReviewProviderAdditions({
+              connection: context.imageConnection,
+              width: compiled.width,
+              height: compiled.height,
+            }),
           };
         }),
       );

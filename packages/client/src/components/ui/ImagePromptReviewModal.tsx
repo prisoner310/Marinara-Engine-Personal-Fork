@@ -19,6 +19,7 @@ export type ImagePromptReviewItem = {
   title: string;
   prompt: string;
   negativePrompt?: string;
+  providerAdditions?: string;
   width?: number;
   height?: number;
   details?: string;
@@ -149,6 +150,20 @@ export function ImagePromptReviewModal({
                   spellCheck={false}
                   className="min-h-40 resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-xs leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]/70 focus:border-[var(--primary)]"
                 />
+                {item.providerAdditions && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">
+                      {localizeUi("ui.ui.imagepromptreviewmodal.providerAdditions")} ·{" "}
+                      {localizeUi("connections.mediaSources.codexChatgpt.name")}
+                    </span>
+                    <div
+                      role="note"
+                      className="whitespace-pre-wrap rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-xs leading-relaxed text-[var(--foreground)]"
+                    >
+                      {item.providerAdditions}
+                    </div>
+                  </div>
+                )}
                 {(item.negativePrompt !== undefined || negativeValue) && (
                   <div className="flex flex-col gap-1">
                     <span className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">

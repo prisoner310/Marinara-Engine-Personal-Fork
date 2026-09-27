@@ -42,7 +42,10 @@ import {
 } from "../services/image/image-generation-defaults.js";
 import { loadImageGenerationUserSettings } from "../services/image/image-generation-settings.js";
 import { compileImagePrompt } from "../services/image/image-prompt-compiler.js";
-import { resolveImagePromptReviewSize } from "../services/image/image-prompt-review.js";
+import {
+  resolveImagePromptReviewProviderAdditions,
+  resolveImagePromptReviewSize,
+} from "../services/image/image-prompt-review.js";
 import { resolveImageConnectionFallback } from "../services/generation/media-connection-fallback.js";
 import { buildAvatarPortraitLeadPrompt } from "../services/image/avatar-generation-prompt.js";
 import {
@@ -461,6 +464,13 @@ type AvatarGenerationBody = {
   debugMode?: boolean;
   promptOverrides?: AvatarGenerationPromptOverride[];
 };
+
+function avatarGenerationReferenceImages(body: AvatarGenerationBody): string[] {
+  return (body.referenceImages ?? [])
+    .map((image) => image.trim())
+    .filter((image) => image.startsWith("data:image/") || /^[A-Za-z0-9+/=\s]+$/.test(image))
+    .slice(0, 4);
+}
 
 const AVATAR_GENERATION_MAX_DIMENSION = 4096;
 const AVATAR_GENERATION_MAX_PIXELS = 16_000_000;
@@ -1167,6 +1177,11 @@ export async function charactersRoutes(app: FastifyInstance) {
       height,
       imageDefaults,
     });
+    const providerAdditions = resolveImagePromptReviewProviderAdditions({
+      connection: resolved.conn,
+      ...previewSize,
+      hasReferences: avatarGenerationReferenceImages(body).length > 0,
+    });
 
     return {
       items: [
@@ -1178,6 +1193,7 @@ export async function charactersRoutes(app: FastifyInstance) {
           negativePrompt: compiled.negativePrompt,
           width: previewSize.width,
           height: previewSize.height,
+          providerAdditions,
         },
       ],
     };
@@ -1216,10 +1232,7 @@ export async function charactersRoutes(app: FastifyInstance) {
       }),
     );
     const promptOverride = promptOverrideById.get(avatarGenerationPromptId(body.name ?? "character", body.purpose));
-    const referenceImages = (body.referenceImages ?? [])
-      .map((image) => image.trim())
-      .filter((image) => image.startsWith("data:image/") || /^[A-Za-z0-9+/=\s]+$/.test(image))
-      .slice(0, 4);
+    const referenceImages = avatarGenerationReferenceImages(body);
 
     const imgModel = conn.model || "";
     const imgBaseUrl = conn.baseUrl || "https://image.pollinations.ai";

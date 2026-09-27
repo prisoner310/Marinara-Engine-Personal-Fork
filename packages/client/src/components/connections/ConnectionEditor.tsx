@@ -1904,6 +1904,11 @@ export function ConnectionEditor() {
                     : "ui.connections.connectioneditor.pickTheBackendTypeOnceThenPointBaseUrl_cfb1337",
                 )}
               </p>
+              {isCodexImageService && (
+                <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">
+                  {localizeUi("ui.connections.connectioneditor.codexImageSizeNotice")}
+                </p>
+              )}
               {selectedImageService === "runpod_comfyui" && (
                 <div className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-[0.625rem] text-amber-300/80">
                   <strong>{localizeUi("ui.connections.connectioneditor.runpodConfiguration")}</strong>{" "}

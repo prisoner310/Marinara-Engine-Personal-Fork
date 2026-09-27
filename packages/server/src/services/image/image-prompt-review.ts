@@ -1,6 +1,7 @@
 import type { ImageGenerationDefaultsProfile } from "@marinara-engine/shared";
 
 import { resolveImageGenerationService, type ImageDefaultsConnection } from "./image-generation-defaults.js";
+import { resolveCodexImageCanvasHint } from "./codex-image-canvas.js";
 import { resolveNovelAiRequestSize } from "./image-generation.js";
 
 export type ReviewedImagePromptSubmission = {
@@ -34,6 +35,18 @@ export function resolveImagePromptReviewSize(args: {
     model: args.connection.model ?? undefined,
     imageDefaults: args.imageDefaults,
   });
+}
+
+/** Show the same provider text that image generation appends after prompt review. */
+export function resolveImagePromptReviewProviderAdditions(args: {
+  connection: ImagePromptReviewConnection;
+  width?: number;
+  height?: number;
+  hasReferences?: boolean;
+  skipCodexCanvasHint?: boolean;
+}): string | undefined {
+  if (resolveImageGenerationService(args.connection) !== "codex_chatgpt") return undefined;
+  return resolveCodexImageCanvasHint(args, args.hasReferences === true);
 }
 
 /**

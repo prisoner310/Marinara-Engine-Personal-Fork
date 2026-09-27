@@ -20,7 +20,10 @@ import {
 } from "../image/character-prompts.js";
 import { resolveConnectionImageDefaults, resolveConnectionImageQuality } from "../image/image-generation-defaults.js";
 import { loadImageGenerationUserSettings } from "../image/image-generation-settings.js";
-import { resolveImagePromptReviewSize } from "../image/image-prompt-review.js";
+import {
+  resolveImagePromptReviewProviderAdditions,
+  resolveImagePromptReviewSize,
+} from "../image/image-prompt-review.js";
 import { createConnectionsStorage } from "../storage/connections.storage.js";
 import { createPromptOverridesStorage } from "../storage/prompt-overrides.storage.js";
 import { resolveImageConnectionFallback } from "./media-connection-fallback.js";
@@ -442,7 +445,12 @@ export async function previewIllustratorSceneBackground(args: IllustratorSceneBa
     height: prepared.imageSettings.background.height,
     imageDefaults: prepared.imageDefaults,
   });
-  return { plan: prepared.plan, ...compiled, ...size };
+  return {
+    plan: prepared.plan,
+    ...compiled,
+    ...size,
+    providerAdditions: resolveImagePromptReviewProviderAdditions({ connection: prepared.imageConnection, ...size }),
+  };
 }
 
 export async function generateIllustratorSceneBackground(

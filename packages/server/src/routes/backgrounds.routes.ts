@@ -31,7 +31,10 @@ import {
   resolveConnectionImageQuality,
 } from "../services/image/image-generation-defaults.js";
 import { loadImageGenerationUserSettings } from "../services/image/image-generation-settings.js";
-import { resolveImagePromptReviewSize } from "../services/image/image-prompt-review.js";
+import {
+  resolveImagePromptReviewProviderAdditions,
+  resolveImagePromptReviewSize,
+} from "../services/image/image-prompt-review.js";
 import { parseThumbnailWidth, resolveThumbPath } from "../services/image/image-thumbnail.js";
 import { resolveImageConnectionFallback } from "../services/generation/media-connection-fallback.js";
 import { resolveGameSetupArtStylePrompt } from "@marinara-engine/shared";
@@ -546,6 +549,10 @@ export async function backgroundsRoutes(app: FastifyInstance) {
           negativePrompt: compiled.negativePrompt,
           width: previewSize.width,
           height: previewSize.height,
+          providerAdditions: resolveImagePromptReviewProviderAdditions({
+            connection: context.imgConn,
+            ...previewSize,
+          }),
         },
       ],
     };

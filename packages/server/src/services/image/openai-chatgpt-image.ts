@@ -8,6 +8,7 @@ import {
   getOpenAIChatGPTAuth,
   type OpenAIChatGPTAuth,
 } from "../llm/openai-chatgpt-auth.js";
+import { resolveCodexImageCanvasHint, resolveCodexImageDimensions } from "./codex-image-canvas.js";
 import type { ImageGenRequest, ImageGenResult } from "./image-generation.js";
 
 // Codex's built-in image tool uses this standalone Images API route for ChatGPT OAuth sessions.
@@ -139,36 +140,6 @@ function editReferences(request: ImageGenRequest): Array<{ image_url: string }> 
   return imageUrls.map((image_url) => ({ image_url }));
 }
 
-function codexImageDimensions(request: ImageGenRequest): { width: number; height: number } | undefined {
-  const { width, height } = request;
-  if (
-    width === undefined ||
-    !Number.isSafeInteger(width) ||
-    width <= 0 ||
-    height === undefined ||
-    !Number.isSafeInteger(height) ||
-    height <= 0
-  ) {
-    return undefined;
-  }
-  return { width, height };
-}
-
-function codexCanvasHint(dimensions: { width: number; height: number }, hasReferences: boolean): string {
-  const { width, height } = dimensions;
-  let divisor = width;
-  let remainder = height;
-  while (remainder !== 0) [divisor, remainder] = [remainder, divisor % remainder];
-  const orientation = width === height ? "square" : width < height ? "portrait" : "landscape";
-  return [
-    ...(hasReferences
-      ? ["Do not inherit the canvas dimensions or aspect ratio of the attached reference images."]
-      : []),
-    `Target canvas: ${orientation}, ${width / divisor}:${height / divisor} aspect ratio (nominal size ${width} x ${height} pixels).`,
-    "Compose the final image for this aspect ratio.",
-  ].join("\n");
-}
-
 /** One PNG result. The connection keeps Codex's fixed image model. */
 export async function generateCodexChatGPTImage(
   request: ImageGenRequest,
@@ -177,12 +148,13 @@ export async function generateCodexChatGPTImage(
   const images = editReferences(request);
 
   const auth = await dependencies.getAuth();
-  const canvas = codexImageDimensions(request);
+  const canvas = resolveCodexImageDimensions(request);
   const sentSize = canvas ? `${canvas.width}x${canvas.height}` : "auto";
   const negativePrompt = request.negativePrompt?.trim();
+  const canvasHint = resolveCodexImageCanvasHint(request, images.length > 0);
   const prompt = [
     request.prompt.trim(),
-    ...(canvas && !request.skipCodexCanvasHint ? [codexCanvasHint(canvas, images.length > 0)] : []),
+    ...(canvasHint ? [canvasHint] : []),
     ...(negativePrompt ? [`Do not include: ${negativePrompt}.`] : []),
   ].join("\n\n");
 

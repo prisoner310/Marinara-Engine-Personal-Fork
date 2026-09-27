@@ -14,6 +14,7 @@ import {
   getCodexChatGPTImageAuth,
   readCodexPngDimensions,
 } from "../../packages/server/src/services/image/openai-chatgpt-image.js";
+import { resolveImagePromptReviewProviderAdditions } from "../../packages/server/src/services/image/image-prompt-review.js";
 import { OPENAI_CHATGPT_CODEX_BASE_URL } from "../../packages/server/src/services/llm/openai-chatgpt-auth.js";
 import { connectionsRoutes } from "../../packages/server/src/routes/connections.routes.js";
 import type { safeFetch } from "../../packages/server/src/utils/security.js";
@@ -95,6 +96,30 @@ assert.deepEqual(JSON.parse(String(sentOptions?.body)), {
   quality: "auto",
   size: "1024x1024",
 });
+const codexConnection = { imageService: "codex_chatgpt" };
+const generationAddition = resolveImagePromptReviewProviderAdditions({
+  connection: codexConnection,
+  width: 1024,
+  height: 1024,
+});
+assert.equal(
+  (JSON.parse(String(sentOptions?.body)) as { prompt: string }).prompt,
+  `a red fox\n\n${generationAddition}\n\nDo not include: text.`,
+);
+assert.equal(
+  resolveImagePromptReviewProviderAdditions({ connection: { imageService: "openai" }, width: 1024, height: 1024 }),
+  undefined,
+);
+assert.equal(resolveImagePromptReviewProviderAdditions({ connection: codexConnection, width: 0, height: 1024 }), undefined);
+assert.equal(
+  resolveImagePromptReviewProviderAdditions({
+    connection: codexConnection,
+    width: 1024,
+    height: 1024,
+    skipCodexCanvasHint: true,
+  }),
+  undefined,
+);
 const headers = sentOptions?.headers as Record<string, string>;
 assert.equal(headers.Authorization, `Bearer ${token}`);
 assert.equal(headers["ChatGPT-Account-ID"], auth.accountId);
@@ -200,6 +225,13 @@ await generateCodexChatGPTImage(
 const sentReferencePrompt = (JSON.parse(String(sentOptions?.body)) as { prompt: string }).prompt;
 assert.ok(sentReferencePrompt.startsWith(`${mainReferencePrompt}\n\n`));
 const addedCanvasHint = sentReferencePrompt.slice(mainReferencePrompt.length + 2);
+const reviewedCanvasHint = resolveImagePromptReviewProviderAdditions({
+  connection: codexConnection,
+  width: 896,
+  height: 1152,
+  hasReferences: true,
+});
+assert.equal(addedCanvasHint, reviewedCanvasHint);
 assert.equal(
   addedCanvasHint,
   "Do not inherit the canvas dimensions or aspect ratio of the attached reference images.\n" +

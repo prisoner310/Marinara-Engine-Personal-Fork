@@ -116,7 +116,10 @@ import {
   resolveNovelAiCharacterPromptLimit,
   supportsNovelAiCharacterPrompts,
 } from "../../services/image/character-prompts.js";
-import { resolveImagePromptReviewSize } from "../../services/image/image-prompt-review.js";
+import {
+  resolveImagePromptReviewProviderAdditions,
+  resolveImagePromptReviewSize,
+} from "../../services/image/image-prompt-review.js";
 import {
   parseIllustratorPromptReviewOverride,
   resolveIllustratorPromptSubmission,
@@ -3756,6 +3759,11 @@ async function applyRetryResultEffects(args: {
                     ...(promptSubmission.negativePrompt ? { negativePrompt: promptSubmission.negativePrompt } : {}),
                     width: previewSize.width,
                     height: previewSize.height,
+                    providerAdditions: resolveImagePromptReviewProviderAdditions({
+                      connection: imgConnFull,
+                      ...previewSize,
+                      hasReferences: Boolean(referenceImages?.length),
+                    }),
                     ...(illustratorCharacterPrompts.length > 0
                       ? { characterPrompts: illustratorCharacterPrompts }
                       : {}),
@@ -4133,6 +4141,7 @@ async function applyRetryResultEffects(args: {
               ...(preview.negativePrompt ? { negativePrompt: preview.negativePrompt } : {}),
               width: preview.width,
               height: preview.height,
+              providerAdditions: preview.providerAdditions,
             },
             resultData: { ...illData, generateBackground: true, backgroundPlan: preview.plan },
           },
