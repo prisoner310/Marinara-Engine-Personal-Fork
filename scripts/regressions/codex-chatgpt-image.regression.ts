@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
@@ -15,6 +15,9 @@ import {
   readCodexPngDimensions,
 } from "../../packages/server/src/services/image/openai-chatgpt-image.js";
 import { resolveImagePromptReviewProviderAdditions } from "../../packages/server/src/services/image/image-prompt-review.js";
+import { resolveAutomaticImageReferenceLimit } from "../../packages/server/src/services/image/codex-image-reference-limit.js";
+import { resolveSceneIllustrationReferenceImageLimit } from "../../packages/server/src/services/game/game-asset-generation.js";
+import { mergeSpatialLocationReferenceImages } from "../../packages/server/src/services/image/spatial-location-reference.js";
 import { OPENAI_CHATGPT_CODEX_BASE_URL } from "../../packages/server/src/services/llm/openai-chatgpt-auth.js";
 import { connectionsRoutes } from "../../packages/server/src/routes/connections.routes.js";
 import type { safeFetch } from "../../packages/server/src/utils/security.js";
@@ -326,6 +329,89 @@ await assert.rejects(
   /up to 5 reference images, but 6 were provided/u,
 );
 assert.equal(fetchCalls, fetchCallsBeforeRejectedReferences);
+
+// Automatic collection must stay within Codex's guard before the request reaches the adapter.
+const characterCandidates = distinctPngs;
+for (const connection of [
+  { model: CODEX_CHATGPT_IMAGE_MODEL, imageService: "codex_chatgpt" },
+  { model: CODEX_CHATGPT_IMAGE_MODEL, imageGenerationSource: "codex_chatgpt" },
+]) {
+  assert.equal(resolveAutomaticImageReferenceLimit(connection, 6), 5);
+  assert.equal(resolveAutomaticImageReferenceLimit(connection, 4), 4);
+  for (const location of [null, "location-reference"]) {
+    const limit = resolveAutomaticImageReferenceLimit(connection, 6);
+    const characterSlots = limit - (location ? 1 : 0);
+    const references = mergeSpatialLocationReferenceImages(
+      location,
+      characterCandidates.slice(0, characterSlots),
+      limit,
+    );
+    assert.deepEqual(
+      references,
+      location ? [location, ...characterCandidates.slice(0, 4)] : characterCandidates.slice(0, 5),
+    );
+  }
+}
+assert.equal(resolveAutomaticImageReferenceLimit({ model: CODEX_CHATGPT_IMAGE_MODEL, imageService: "openai" }, 6), 6);
+assert.equal(resolveAutomaticImageReferenceLimit({ imageService: "xai" }, 6), 6);
+
+for (const [source, model, service, expected] of [
+  ["gpt-image-2", "gpt-image-2", "codex_chatgpt", 5],
+  ["codex_chatgpt", "gpt-image-2", undefined, 5],
+  ["openai", "gpt-image-2", "openai", 16],
+  ["openrouter", "gpt-image-2", "openrouter", 16],
+  ["novelai", "nai-diffusion-4-5-full", "novelai", 16],
+  ["xai", "grok-imagine-image", "xai", 3],
+  ["nanogpt", "gpt-image-2", "nanogpt", 3],
+  ["stability", "sd3", "stability", 1],
+  ["automatic1111", "sdxl", "automatic1111", 1],
+  ["pollinations", "flux", "pollinations", 1],
+  ["gemini_image", "gemini-3-pro-image", "gemini_image", 5],
+  ["gemini_image", "gemini-2.5-flash-image", "gemini_image", 4],
+  ["openrouter", "nano-banana", "openrouter", 14],
+  ["togetherai", "flux", "togetherai", 4],
+] as const) {
+  const limit = resolveSceneIllustrationReferenceImageLimit({
+    imgSource: source,
+    imgModel: model,
+    imgService: service,
+    imgBaseUrl: "",
+  });
+  assert.equal(limit, expected, `${source}/${service ?? "source"} reference limit`);
+  if (source === "codex_chatgpt" || service === "codex_chatgpt") {
+    for (const location of [null, "location-reference"]) {
+      assert.deepEqual(
+        mergeSpatialLocationReferenceImages(location, characterCandidates, limit),
+        location ? [location, ...characterCandidates.slice(0, 4)] : characterCandidates.slice(0, 5),
+      );
+    }
+  }
+}
+
+// The routes are large orchestration entrypoints; verify they wire collection and merge to the tested limit.
+for (const path of ["generate.routes.ts", "generate/retry-agents-route.ts"]) {
+  const source = readFileSync(new URL(`../../packages/server/src/routes/${path}`, import.meta.url), "utf8");
+  assert.match(source, /const referenceImageLimit = resolveAutomaticImageReferenceLimit\(imgConnFull, 6\)/u);
+  assert.match(source, /maxReferences: referenceImageLimit - \(spatialLocationReferenceImage \? 1 : 0\)/u);
+  assert.match(
+    source,
+    /mergeSpatialLocationReferenceImages\(\s*spatialLocationReferenceImage,\s*useAvatarRefs \? referenceResolution\.referenceImages : \[\],\s*referenceImageLimit,/u,
+  );
+  assert.doesNotMatch(source, /maxReferences: spatialLocationReferenceImage \? 5 : 6/u);
+}
+const selfieSource = readFileSync(
+  new URL("../../packages/server/src/services/generation/conversation-selfie-command-runtime.ts", import.meta.url),
+  "utf8",
+);
+assert.match(selfieSource, /maxReferences: resolveAutomaticImageReferenceLimit\(imgConnFull, 6\)/u);
+const gameSource = readFileSync(new URL("../../packages/server/src/routes/game.routes.ts", import.meta.url), "utf8");
+assert.equal(
+  gameSource.match(
+    /maxReferenceImages: Math\.max\(0, (?:storyboardReferenceImageLimit|referenceImageLimit) - \(spatialLocationReferenceImage \? 1 : 0\)\)/gu,
+  )?.length,
+  3,
+  "Storyboard and both Game illustration paths must reserve a location slot",
+);
 
 for (const referenceImage of [
   "data:image/png;base64,",

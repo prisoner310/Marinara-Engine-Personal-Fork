@@ -162,6 +162,7 @@ import {
   resolveConnectionImageQuality,
 } from "../services/image/image-generation-defaults.js";
 import { generateIllustratorImageVariants } from "../services/image/illustrator-image-variants.js";
+import { resolveAutomaticImageReferenceLimit } from "../services/image/codex-image-reference-limit.js";
 import {
   loadImageGenerationUserSettings,
   resolveIllustratorImageSize,
@@ -11379,6 +11380,7 @@ export async function generateRoutes(app: FastifyInstance) {
                         projection: ownerSpatialProjection?.ownerMode === "roleplay" ? ownerSpatialProjection : null,
                       });
                       let illustratorRefImages: string[] | undefined;
+                      const referenceImageLimit = resolveAutomaticImageReferenceLimit(imgConnFull, 6);
                       const referenceResolution = await resolveIllustratorCharacterReferences({
                         charactersStore: chars,
                         characterGallery,
@@ -11427,7 +11429,7 @@ export async function generateRoutes(app: FastifyInstance) {
                         fallbackToChatCharacters: false,
                         includeReferenceImages: useAvatarRefs,
                         includePersonaWhenMentionedInPrompt: false,
-                        maxReferences: spatialLocationReferenceImage ? 5 : 6,
+                        maxReferences: referenceImageLimit - (spatialLocationReferenceImage ? 1 : 0),
                       });
                       if (includeCharacterAppearance) {
                         const appearanceBlock =
@@ -11459,7 +11461,7 @@ export async function generateRoutes(app: FastifyInstance) {
                       const mergedReferenceImages = mergeSpatialLocationReferenceImages(
                         spatialLocationReferenceImage,
                         useAvatarRefs ? referenceResolution.referenceImages : [],
-                        6,
+                        referenceImageLimit,
                       );
                       if (mergedReferenceImages.length > 0) {
                         illustratorRefImages = mergedReferenceImages;

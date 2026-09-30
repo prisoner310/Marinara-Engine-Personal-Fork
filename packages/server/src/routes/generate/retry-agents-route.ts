@@ -84,6 +84,7 @@ import {
   resolveConnectionImageQuality,
 } from "../../services/image/image-generation-defaults.js";
 import { injectMemoryRecallContext } from "../../services/generation/memory-recall-context.js";
+import { resolveAutomaticImageReferenceLimit } from "../../services/image/codex-image-reference-limit.js";
 import {
   appendTrackerLorebookBatchContextKey,
   applyTrackerLorebookContextPolicy,
@@ -3581,6 +3582,7 @@ async function applyRetryResultEffects(args: {
                     appearance: agentContext.persona.appearance,
                   }
                 : null;
+            const referenceImageLimit = resolveAutomaticImageReferenceLimit(imgConnFull, 6);
             const referenceResolution = await resolveIllustratorCharacterReferences({
               charactersStore: chars,
               characterGallery: createCharacterGalleryStorage(app.db),
@@ -3626,7 +3628,7 @@ async function applyRetryResultEffects(args: {
               fallbackToChatCharacters: false,
               includeReferenceImages: useAvatarRefs,
               includePersonaWhenMentionedInPrompt: false,
-              maxReferences: spatialLocationReferenceImage ? 5 : 6,
+              maxReferences: referenceImageLimit - (spatialLocationReferenceImage ? 1 : 0),
             });
             assertRetryActive();
             if (includeCharacterAppearance) {
@@ -3659,7 +3661,7 @@ async function applyRetryResultEffects(args: {
             const mergedReferenceImages = mergeSpatialLocationReferenceImages(
               spatialLocationReferenceImage,
               useAvatarRefs ? referenceResolution.referenceImages : [],
-              6,
+              referenceImageLimit,
             );
             if (mergedReferenceImages.length > 0) {
               referenceImages = mergedReferenceImages;

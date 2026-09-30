@@ -15,6 +15,7 @@ import { resolveConnectionImageDefaults, resolveConnectionImageQuality } from ".
 import { generateImage, saveImageToDisk } from "../image/image-generation.js";
 import { loadImageGenerationUserSettings } from "../image/image-generation-settings.js";
 import { generateIllustratorImageVariants } from "../image/illustrator-image-variants.js";
+import { resolveAutomaticImageReferenceLimit } from "../image/codex-image-reference-limit.js";
 import { resolveConversationSelfieSystemPrompt } from "../conversation/selfie-prompt.js";
 import { appendImagePromptInstructions } from "./image-prompt-instructions.js";
 import type { CharacterCommand, SelfieCommand } from "../conversation/character-commands.js";
@@ -275,7 +276,7 @@ async function generateSelfie(
       requestedNames,
       promptText: [args.charName, args.command.context ?? "", imagePrompt].join("\n"),
       fallbackToChatCharacters: false,
-      maxReferences: 6,
+      maxReferences: resolveAutomaticImageReferenceLimit(imgConnFull, 6),
     });
     selfieResolvedCharacterIds = Array.from(
       new Set([...selfieResolvedCharacterIds, ...referenceResolution.characterIds]),

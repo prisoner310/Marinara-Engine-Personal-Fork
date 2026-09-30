@@ -34,6 +34,7 @@ import type { ImageGenerationSize } from "../image/image-generation-settings.js"
 import { compileImagePrompt } from "../image/image-prompt-compiler.js";
 import { loadGameStoryboardImagePrompt } from "../image/game-storyboard-image-prompt.js";
 import { SPATIAL_LOCATION_REFERENCE_PROMPT_LINE } from "../image/spatial-location-reference.js";
+import { CODEX_CHATGPT_MAX_REFERENCE_IMAGES } from "../image/codex-image-reference-limit.js";
 import { compactImagePromptInstructions } from "../sidecar/scene-analyzer.js";
 
 const NPC_AVATAR_DIR = join(DATA_DIR, "avatars", "npc");
@@ -58,6 +59,7 @@ const NARROW_SCENE_ILLUSTRATION_REFERENCE_IMAGE_LIMIT = 3;
 const SINGLE_SCENE_ILLUSTRATION_REFERENCE_IMAGE_LIMIT = 1;
 const SCENE_ILLUSTRATION_IMAGE_BACKENDS = new Set([
   "openai",
+  "codex_chatgpt",
   "nanogpt",
   "openrouter",
   "pollinations",
@@ -158,6 +160,7 @@ export function resolveSceneIllustrationReferenceImageLimit(
   req: Pick<SceneIllustrationGenRequest, "imgSource" | "imgModel" | "imgBaseUrl" | "imgService">,
 ): number {
   const backend = resolveSceneIllustrationImageBackend(req);
+  if (backend === "codex_chatgpt") return CODEX_CHATGPT_MAX_REFERENCE_IMAGES;
   const model = [req.imgModel, req.imgSource, req.imgService].filter(Boolean).join(" ").toLowerCase();
   const isGeminiImageModel = model.includes("gemini") && model.includes("image");
 

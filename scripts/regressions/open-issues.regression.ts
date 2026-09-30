@@ -6893,8 +6893,8 @@ assert.match(
 );
 assert.match(
   conversationSelfieRuntimeSource,
-  /resolveIllustratorCharacterReferences\(\{[\s\S]{0,800}persona: null,[\s\S]{0,200}requestedNames,[\s\S]{0,300}maxReferences: 6/u,
-  "Conversation group selfies must keep all depicted character references without attaching the photographer persona",
+  /resolveIllustratorCharacterReferences\(\{[\s\S]{0,800}persona: null,[\s\S]{0,200}requestedNames,[\s\S]{0,300}maxReferences: resolveAutomaticImageReferenceLimit\(imgConnFull, 6\)/u,
+  "Conversation group selfies must use the selected connection's reference limit without attaching the photographer persona",
 );
 assert.match(
   conversationSelfieRuntimeSource,

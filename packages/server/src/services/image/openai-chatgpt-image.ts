@@ -9,12 +9,12 @@ import {
   type OpenAIChatGPTAuth,
 } from "../llm/openai-chatgpt-auth.js";
 import { resolveCodexImageCanvasHint, resolveCodexImageDimensions } from "./codex-image-canvas.js";
+import { CODEX_CHATGPT_MAX_REFERENCE_IMAGES } from "./codex-image-reference-limit.js";
 import type { ImageGenRequest, ImageGenResult } from "./image-generation.js";
 
 // Codex's built-in image tool uses this standalone Images API route for ChatGPT OAuth sessions.
 const GENERATIONS_URL = `${OPENAI_CHATGPT_CODEX_BASE_URL}/images/generations`;
 const EDITS_URL = `${OPENAI_CHATGPT_CODEX_BASE_URL}/images/edits`;
-const MAX_EDIT_IMAGES = 5;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 type ImageDependencies = {
@@ -132,9 +132,9 @@ function editReferences(request: ImageGenRequest): Array<{ image_url: string }> 
     .map((value) => value?.trim())
     .filter((value): value is string => !!value);
   const imageUrls = [...new Set(references.map(referenceImageDataUrl))];
-  if (imageUrls.length > MAX_EDIT_IMAGES) {
+  if (imageUrls.length > CODEX_CHATGPT_MAX_REFERENCE_IMAGES) {
     throw new Error(
-      `ChatGPT/Codex image editing supports up to ${MAX_EDIT_IMAGES} reference images, but ${imageUrls.length} were provided.`,
+      `ChatGPT/Codex image editing supports up to ${CODEX_CHATGPT_MAX_REFERENCE_IMAGES} reference images, but ${imageUrls.length} were provided.`,
     );
   }
   return imageUrls.map((image_url) => ({ image_url }));
