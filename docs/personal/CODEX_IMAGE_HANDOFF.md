@@ -7,7 +7,16 @@
 - 目的: Marinara Engineの通常のImage Generation Connectionで、既存の`codex login`によるChatGPT OAuthを使い、別のOpenAI Platform API Keyなしで画像生成・参照画像編集を利用する。
 - 作業branch: `personal/codex-image`。`origin`は個人fork `prisoner310/Marinara-Engine-Personal-Fork`、`upstream`は公式 `Pasta-Devs/Marinara-Engine`。個人branchだけに通常pushし、公式側へのpush・PRはしていない。
 - 履歴: Phase 1 `ec3ab4bcc`（OAuth画像接続）、Phase 2A `1a4b0cf74`（参照画像編集）、共有メモ追加 `31776fbd0`、Phase 2A.5 `ca99b312d`（透過・サイズ対応）、Phase 2A.6 `f30df8929`（サイズ診断）、Phase 2A.7 `a2b807657`（比率prompt補助）、Phase 2A.8 `61a59d5a26c4d5c05cfee09a227daa9a1823335e`（参照用途を決め打ちしない）、Phase 2A.9 `05d3fee8d23af6bf34e8a87c2c1eeefcdb820df6`（接続画面・文書・Prompt Reviewの説明）、説明修正 `0aa61ce78c2bbecd019e70644562a3cbe2179e18`。公式mainの `12a0acd5b` を基点とする個人branch上のコミット。
-- **最後に確認した実装commit SHA:** `0aa61ce78c2bbecd019e70644562a3cbe2179e18`（Codexの返却サイズに関する説明修正）。共有メモ自体の最新commitは `git log -1` で確認する。
+- **最後に確認した実装commit SHA:** `22701b4edada8be550c99e4894986b3039b0b291`（Phase 2A.10: Codexの自動参照画像収集を最大5枚へ統一）。共有メモ自体の最新commitは `git log -1` で確認する。
+
+## 現在の判定: integration v1 complete
+
+**ChatGPT / Codex Image integration v1 complete**（2026-09-30）。v1の定義は「Codex backendの現在提供する能力の範囲で、MEの標準画像生成フローへ安全に参加できること」。Phase 2A.10で自動参照収集とadapter上限の不整合を修正し、関連mock回帰・通常チェックが成功した。新規blockerは見つかっていない。実画像の確認範囲は下記のユーザー報告に基づき、今回の作業では実アカウントを使っていない。
+
+- feature-gap auditの確認範囲: Text-to-Image、Selfie、Avatar / Character Sheet、Illustrate、Game Scene / Storyboard、背景、Sprite、参照編集、negative prompt、native transparency、Settingsの寸法伝搬、比率補助、Prompt Review、Gallery保存、Test Connection / Test Image、共通queue / timeout / abort / fallback。
+- **Phase 2A.10の上限:** Game / Storyboard、通常Illustrator、retry Illustrator、Conversation SelfieはCodex選択時に最大5枚。場所画像を使うGame / Storyboard / Illustratorでは、場所なしは人物最大5枚、場所ありは場所1枚＋人物最大4枚。収集とmergeに同じ合計上限を使う。Gallery Selfieの最大1枚、Avatar / Character Sheetの最大4枚は維持する。
+- `codex-image-reference-limit.ts`を5枚の共通定義とし、既存の接続service解決を再利用する。Gameでは`codex_chatgpt`を明示backendとして判定し、`gpt-image-2`からOpenAIの16枚上限へ入る誤判定を防ぐ。他providerの上限、汎用Illustrator既定上限6枚、参照の意味・選択順は変更しない。直接渡された異なる参照が6枚以上の場合は、従来どおりadapterが送信前に明示エラーにする。
+- GPT-Image 2固定、quality=`auto`、Seed / Steps / CFG / Sampler、LoRA / ComfyUI workflow、custom API parametersの非対応、厳密なpixel寸法の非保証はprovider固有差でありv1 blockerではない。mask、generation ID、multiple outputは現在のME共通`ImageGenRequest`にもないためv1対象外。
 
 ## 実装済みと実画像の確認状況
 
@@ -46,9 +55,9 @@
 - pixel-perfect sizeはCodex接続の完成条件に含めない。API `size`は維持し、Codex adapterでは返却画像を強制resize・crop・paddingしない。ME既存のasset別後処理は従来どおり適用される場合がある。比率が不安定なら実測とCodex側仕様を再確認する。`LOG_LEVEL=debug`の`[codex-image]`行は今後も確認に使えるが、debug出力全体には他経路のprompt等があり得るため、共有するのはこの1行だけにする。
 - Character Avatar / Character Sheet生成modalは、画面を開いたまま外部の既定Image Generation Connectionを変更した場合、以前の選択・既定接続を保持することがある。`AvatarGenerationModal.tsx`の`connectionId` stateが既定接続より優先される既存挙動で、ユーザーの比較ではupstreamにも存在する。Codex固有の問題ではなく今回の対象外。**modal内の接続選択まで反映されないと確認されたわけではない。**
 - Spriteの小さいキャンバス等、backendが受け付けるサイズ範囲は実機未確定。Codex Images request型の`String`は任意サイズの受理を保証しない。
-- generation IDを使った再編集、mask、quality UI、モデル選択、複数出力は未対応。6枚以上の参照画像を自動選択せず、エラーで知らせる。
-- **将来の任意検討:** シーンに出るキャラクターの画像を自動参照する際の優先順位と5枚制限。既存の`game.routes.ts`は`collectIllustrationCharacterAssets()`で登場人物の参照画像を集め、`illustrator-references.ts`は設定されたcharacter sheet、avatar、spriteの順で候補を読む。背景の場所画像も先に入る場合がある。シーン側のprovider別上限はCodex固有に調整されていないため、6枚以上では現在のadapterが明示的に拒否し得る。Illustrator Agent内部のreference selectionやCodex専用のcharacter/location selectionは現時点の完成条件ではない。
-- **さらに先の候補:** generation IDによる連続編集、mask、quality設定、size調整、複数出力。GPT-Image 2.5の検討はCodex側の明示的なモデル選択を確認してから行う。
+- **canvas補助文は暫定workaround:** Codexが正式にcustom sizeを扱えるようになり、補助文なしの実画像で、参照なしのportrait / square / landscapeと、参照ありで参照canvasと異なる目標比率を確認できたら撤去を検討する。実送信とPrompt Reviewの補助文を同時に外し、API `size`の伝搬は別の責務として維持する。今回helper文面・Provider additionsは変更していない。
+- **参照選択の将来候補:** `game.routes.ts`は`collectIllustrationCharacterAssets()`で登場人物を集め、`illustrator-references.ts`は設定されたcharacter sheet、avatar、spriteの順で候補を読む。場所画像は先頭に入る。Phase 2A.10はその順番を保ったままCodexの合計5枚を適用した。より高度な優先順位、reference role分類、generic provider capability frameworkは、明確な必要性またはupstream共通機構が出てから検討する。
+- **その他のfuture work（v1 blockerではない）:** Provider additionsの表示位置をUXへ統合する場合も、編集可能なmain promptとは別データ・read-onlyを維持する。model selector / GPT-Image 2.5はCodex側の明示的なモデル選択待ち。quality selector、generation IDによる連続編集、mask、multiple output、Avatar / Character Sheetのprovider共通reference semantics改善も任意の拡張として扱う。
 - 起動時更新で未追跡のadapterが消えた過去の報告がある。現在のadapterは個人branchに追跡・push済み。起動や更新後、branchと`git status`を確認する。
 
 ## 主なファイルとテスト
@@ -57,6 +66,8 @@
 | --- | --- |
 | `packages/server/src/services/llm/openai-chatgpt-auth.ts` | 既存のCodex ChatGPTログイン取得・更新 |
 | `packages/server/src/services/image/openai-chatgpt-image.ts`・`codex-image-canvas.ts`・`image-prompt-review.ts` | generation/edit切替とHTTP、共通canvas補助文、Prompt Reviewへの同文提供、PNG結果・寸法診断 |
+| `packages/server/src/services/image/codex-image-reference-limit.ts` | Codex最大5枚の共通定義と、既存の自動収集上限をCodex選択時だけ制限するhelper |
+| `packages/server/src/services/game/game-asset-generation.ts`・`packages/server/src/routes/generate.routes.ts`・`packages/server/src/routes/generate/retry-agents-route.ts`・`packages/server/src/services/generation/conversation-selfie-command-runtime.ts` | Game / Storyboard、通常・retry Illustrator、Conversation Selfieの自動参照上限（場所込み） |
 | `packages/server/src/services/image/image-generation.ts`・`packages/server/src/routes/sprites.routes.ts` | 共通`generateImage()`の振り分け、Sprite専用のcanvas補助文除外 |
 | `packages/server/src/services/image/image-generation-settings.ts`・`packages/server/src/routes/generate.routes.ts`・`packages/server/src/services/generation/conversation-selfie-command-runtime.ts` | Illustrate/Selfieの要求サイズ決定・伝搬・Gallery保存（Phase 2A.6では未変更） |
 | `packages/server/src/routes/sprites.routes.ts`・`packages/server/src/services/image/sprite-background.service.ts` | 接続別透過判定、Sprite prompt、alpha画像の背景除去skip |
@@ -73,5 +84,6 @@
 - Phase 2A.8時点の結果: `corepack pnpm check`成功（build・型検査・lint込み。未変更の`GameNarration.tsx`に既存lint警告1件）。Codex画像、`open-issues`、`prompt`、Sprite背景の回帰は各1/1成功。mockで参照editの用途中立なcanvas文、main promptの用途説明の保持、参照なしgeneration、7:9/16:9/1:1、negative prompt、invalid寸法の`size=auto`、Sprite補助文除外を確認。変更後にユーザーが参照画像ありの実画像で要求aspect ratioに沿う出力を確認済み。UI変更がないためこの段階ではe2eを再実行していない。
 - Phase 2A.9時点の結果: `corepack pnpm check`成功（build・型検査・lint込み。未変更の`GameNarration.tsx`に既存lint警告1件）。Codex画像、Sprite背景、`open-issues`、`prompt`のmock回帰は各1/1成功。canvas補助文について、Prompt Reviewと実送信の一致、参照有無、無効寸法、Codex以外、Sprite除外を検査。関連Playwright 12件はdesktop Chromium / mobile Chromium / mobile WebKitで全件成功（`--workers=1`）。Connectionのsize説明、Avatarの参照有無によるpreview、read-only Provider additions、Spriteプレビューを確認。後日ユーザーが実機で、Provider additionsはCodex接続でのみ表示され他providerでは表示されないことを確認済み。Phase 2A.9作業中に実画像は新たに生成していない。
 - Phase 2A.9説明修正後の結果: `corepack pnpm check`成功（既存の`GameNarration.tsx` lint警告1件）。Codex Connection画面のPlaywright 3件はdesktop Chromium / mobile Chromium / mobile WebKitで全件成功（`--workers=1`）。画像生成コードは変更せず、実画像生成も行っていない。
+- **Phase 2A.10の結果:** `corepack pnpm check`成功（format・localization・lint・型検査・build。既存の`GameNarration.tsx` lint警告1件とbundle警告あり）、`corepack pnpm version:check`成功。`codex-chatgpt-image`、`open-issues`、`prompt`、`sprite-background`、`illustrator-reference-scope`、`spatial-context`、`spatial-location-reference`の回帰は各1/1、合計7/7成功。追加proofはCodex service/source判定、人物5枚・場所1枚＋人物4枚、normal / retry / Selfie / Gameの呼出し配線、他provider上限維持を確認し、既存の5枚受付・6枚拒否も成功。UI未変更のためPlaywrightは再実行せず、実画像生成も未実施。
 - mockは合成画像・合成認証情報のみを使う。Test Connectionは画像を生成しないが、**Test Imageと手動Editは実際に画像利用枠を使う**。
 - このWindows環境ではリポジトリ指定のpnpm 10を`corepack pnpm`で使用。サンドボックス内のPlaywrightブラウザ起動は`EPERM`になったため、ブラウザーテストだけ許可された環境で実行した。Phase 2A.9では6並列時にPlaywright自体の`test() to be called here`読み込みエラーが出たが、同じ12件を`--workers=1`で実行すると全件成功。PlaywrightのwebServer終了待ちが止まる場合、起動済みテストサーバーで`PLAYWRIGHT_SKIP_WEBSERVER=true`として結果を確定できた。
