@@ -9,14 +9,29 @@
 - 履歴: Phase 1 `ec3ab4bcc`（OAuth画像接続）、Phase 2A `1a4b0cf74`（参照画像編集）、共有メモ追加 `31776fbd0`、Phase 2A.5 `ca99b312d`（透過・サイズ対応）、Phase 2A.6 `f30df8929`（サイズ診断）、Phase 2A.7 `a2b807657`（比率prompt補助）、Phase 2A.8 `61a59d5a26c4d5c05cfee09a227daa9a1823335e`（参照用途を決め打ちしない）、Phase 2A.9 `05d3fee8d23af6bf34e8a87c2c1eeefcdb820df6`（接続画面・文書・Prompt Reviewの説明）、説明修正 `0aa61ce78c2bbecd019e70644562a3cbe2179e18`。公式mainの `12a0acd5b` を基点とする個人branch上のコミット。
 - **最後に確認した実装commit SHA:** `22701b4edada8be550c99e4894986b3039b0b291`（Phase 2A.10: Codexの自動参照画像収集を最大5枚へ統一）。共有メモ自体の最新commitは `git log -1` で確認する。
 
-## 現在の判定: integration v1 complete
+## 現在の判定: v1機能完成、参照上限は暫定5枚
 
-**ChatGPT / Codex Image integration v1 complete**（2026-09-30）。v1の定義は「Codex backendの現在提供する能力の範囲で、MEの標準画像生成フローへ安全に参加できること」。Phase 2A.10で自動参照収集とadapter上限の不整合を修正し、関連mock回帰・通常チェックが成功した。新規blockerは見つかっていない。実画像の確認範囲は下記のユーザー報告に基づき、今回の作業では実アカウントを使っていない。
+**v1 implementation is functionally complete, but the production reference cap remains conservative pending follow-up.**（2026-09-30）。v1の定義は「Codex backendの現在提供する能力の範囲で、MEの標準画像生成フローへ安全に参加できること」。Phase 2A.10で自動参照収集とadapter上限を5枚に整合させ、関連mock回帰・通常チェックが成功した。Phase 2A.11の実アカウント診断でOAuth endpointは16枚まで受理したため、productionの5枚はbackendの確定上限ではなく安全側の暫定値。上限変更は次フェーズで扱う。各ME機能の実画像確認は下記ユーザー報告に基づき、今回の診断はendpointの参照枚数のみを確認した。
 
 - feature-gap auditの確認範囲: Text-to-Image、Selfie、Avatar / Character Sheet、Illustrate、Game Scene / Storyboard、背景、Sprite、参照編集、negative prompt、native transparency、Settingsの寸法伝搬、比率補助、Prompt Review、Gallery保存、Test Connection / Test Image、共通queue / timeout / abort / fallback。
 - **Phase 2A.10の上限:** Game / Storyboard、通常Illustrator、retry Illustrator、Conversation SelfieはCodex選択時に最大5枚。場所画像を使うGame / Storyboard / Illustratorでは、場所なしは人物最大5枚、場所ありは場所1枚＋人物最大4枚。収集とmergeに同じ合計上限を使う。Gallery Selfieの最大1枚、Avatar / Character Sheetの最大4枚は維持する。
 - `codex-image-reference-limit.ts`を5枚の共通定義とし、既存の接続service解決を再利用する。Gameでは`codex_chatgpt`を明示backendとして判定し、`gpt-image-2`からOpenAIの16枚上限へ入る誤判定を防ぐ。他providerの上限、汎用Illustrator既定上限6枚、参照の意味・選択順は変更しない。直接渡された異なる参照が6枚以上の場合は、従来どおりadapterが送信前に明示エラーにする。
 - GPT-Image 2固定、quality=`auto`、Seed / Steps / CFG / Sampler、LoRA / ComfyUI workflow、custom API parametersの非対応、厳密なpixel寸法の非保証はprovider固有差でありv1 blockerではない。mask、generation ID、multiple outputは現在のME共通`ImageGenRequest`にもないためv1対象外。
+
+## Phase 2A.11: OAuth参照枚数の実アカウント診断
+
+2026-09-30、HEAD `26c87d69c459ecf153ae49b2ebe85db7554032b7`のproductionコードを変更せず、一時スクリプトから既存OAuth helper・model constantを再利用して`POST /images/edits`へ直接送信した。ローカルで生成・デコード検査した**16個の異なる256×256 PNG**を使い、6枚の成功後にだけ16枚を送信。共通requestはmodel=`gpt-image-2`、background=`opaque`、quality=`auto`、size=`1024x1024`と中立的な短いprompt。画像リクエストは合計2回、自動retryなし。
+
+| 参照枚数 | 結果 | HTTP | imagegen request ID |
+| --- | --- | --- | --- |
+| 6 | success: `data[0].b64_json`の画像を正常デコード | 200 | `b79a197f-7618-4590-99c9-27248ab08f50` |
+| 16 | success: `data[0].b64_json`の画像を正常デコード | 200 | `70fd19bf-916e-4add-97bb-1c2e6aa7694a` |
+
+- 両方のresponseはsize=`1254x1254`、background=`opaque`、quality=`medium`。デコードした画像の実寸も1254×1254。requestのqualityは`auto`であり、結果のmediumを固定設定として扱わない。
+- **判定B: OAuth Images endpoint accepts at least 16 reference images.** 既存Codex source調査で確認されたbuilt-in image toolの5枚制限は、今回観測したOAuth endpointの上限ではなくclient/tool側の制限。16枚を超える真の最大枚数は未確認。一般GPT Image APIの資料とOAuth endpointの能力は別の根拠として扱う。
+- 受理・画像返却の成功のみを確認した。全参照の内容が生成へ反映されたことや、他アカウント・将来のbackendで同じ上限になることまでは証明していない。
+- **productionは5枚のまま:** 共通constant、adapter guard、自動収集、利用者向けdocs、CHANGELOG、UIは未変更。次フェーズで観測結果に基づく上限変更とmock回帰を検討する。
+- 生成画像・参照画像・認証情報は保存していない。一時診断スクリプトは削除済み。今回は診断と共有メモのみのため、productionのbuild・回帰テストは再実行せず、PNG準備・デコード検査とGit差分検査を行った。
 
 ## 実装済みと実画像の確認状況
 
