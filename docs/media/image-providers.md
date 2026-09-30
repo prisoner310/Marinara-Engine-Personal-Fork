@@ -56,7 +56,11 @@ Cloud service with the default Base URL `https://api.openai.com/v1`. It needs an
 
 ## ChatGPT / Codex Image
 
-Cloud service that reuses your local `codex login` ChatGPT OAuth session. It needs no OpenAI Platform API key or Base URL. With no reference images, it generates one PNG from a text prompt using the fixed Codex GPT Image model. With 1–5 reference images, it sends an image edit request and returns one PNG. More than 5 distinct reference images produce an error rather than silently dropping any. The connection check validates the local login without generating an image.
+Cloud service that reuses your local `codex login` ChatGPT OAuth session. It needs no OpenAI Platform API key or Base URL. With no reference images, it generates one PNG from a text prompt using the fixed Codex GPT Image model. With 1–16 reference images, it sends an image edit request and returns one PNG. The connection check validates the local login without generating an image.
+
+Marinara currently supports up to 16 distinct reference images for this connection, based on verified OAuth endpoint behavior; this is not a claim about the endpoint's absolute maximum. More than 16 distinct references produce a Marinara connection error rather than silently dropping any.
+
+Individual workflows retain their own smaller limits: normal and retry Illustrator and Conversation Selfie use up to 6, Avatar / Character Sheet up to 4, and Gallery Selfie up to 1. Game / Storyboard can use up to 16, including any location reference.
 
 Marinara sends your requested width and height to Codex and also guides the target aspect ratio in the image prompt. Codex may return different exact pixel dimensions. Some Marinara image workflows may still apply their normal post-processing when saving generated assets. When prompt review is enabled, its read-only **Provider additions** section shows the canvas guidance that Marinara will send.
 
@@ -183,7 +187,7 @@ A **reference image** is an existing picture you send along with your prompt. It
 | Provider | Reference images |
 | --- | --- |
 | OpenAI (DALL-E) | Up to 16 |
-| ChatGPT / Codex Image | Up to 5 |
+| ChatGPT / Codex Image | Up to 16 (verified OAuth support limit) |
 | NovelAI | Up to 16, V4.5 model only |
 | xAI / Grok Imagine | Up to 3 |
 | Venice.ai | Not supported for text-to-image generation |

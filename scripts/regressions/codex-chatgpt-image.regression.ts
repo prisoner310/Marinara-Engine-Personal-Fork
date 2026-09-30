@@ -312,21 +312,24 @@ assert.deepEqual(JSON.parse(String(sentOptions?.body)).images, [
   { image_url: `data:image/webp;base64,${webp}` },
 ]);
 
-const distinctPngs = Array.from({ length: 6 }, (_, index) =>
+const distinctPngs = Array.from({ length: 17 }, (_, index) =>
   Buffer.concat([Buffer.from(png, "base64"), Buffer.from([index])]).toString("base64"),
 );
 await generateCodexChatGPTImage(
-  { prompt: "edit", referenceImage: distinctPngs[0], referenceImages: distinctPngs.slice(1, 5) },
+  { prompt: "edit", referenceImage: distinctPngs[0], referenceImages: distinctPngs.slice(1, 16) },
   dependencies,
 );
-assert.equal(JSON.parse(String(sentOptions?.body)).images.length, 5);
+assert.deepEqual(
+  JSON.parse(String(sentOptions?.body)).images,
+  distinctPngs.slice(0, 16).map((image) => ({ image_url: `data:image/png;base64,${image}` })),
+);
 const fetchCallsBeforeRejectedReferences = fetchCalls;
 await assert.rejects(
   generateCodexChatGPTImage(
     { prompt: "edit", referenceImage: distinctPngs[0], referenceImages: distinctPngs.slice(1) },
     dependencies,
   ),
-  /up to 5 reference images, but 6 were provided/u,
+  /Marinara's ChatGPT\/Codex image connection supports up to 16 reference images, but 17 were provided/u,
 );
 assert.equal(fetchCalls, fetchCallsBeforeRejectedReferences);
 
@@ -336,8 +339,11 @@ for (const connection of [
   { model: CODEX_CHATGPT_IMAGE_MODEL, imageService: "codex_chatgpt" },
   { model: CODEX_CHATGPT_IMAGE_MODEL, imageGenerationSource: "codex_chatgpt" },
 ]) {
-  assert.equal(resolveAutomaticImageReferenceLimit(connection, 6), 5);
+  assert.equal(resolveAutomaticImageReferenceLimit(connection, 6), 6);
   assert.equal(resolveAutomaticImageReferenceLimit(connection, 4), 4);
+  assert.equal(resolveAutomaticImageReferenceLimit(connection, 1), 1);
+  assert.equal(resolveAutomaticImageReferenceLimit(connection, 16), 16);
+  assert.equal(resolveAutomaticImageReferenceLimit(connection, 20), 16);
   for (const location of [null, "location-reference"]) {
     const limit = resolveAutomaticImageReferenceLimit(connection, 6);
     const characterSlots = limit - (location ? 1 : 0);
@@ -348,16 +354,22 @@ for (const connection of [
     );
     assert.deepEqual(
       references,
-      location ? [location, ...characterCandidates.slice(0, 4)] : characterCandidates.slice(0, 5),
+      location ? [location, ...characterCandidates.slice(0, 5)] : characterCandidates.slice(0, 6),
     );
   }
 }
-assert.equal(resolveAutomaticImageReferenceLimit({ model: CODEX_CHATGPT_IMAGE_MODEL, imageService: "openai" }, 6), 6);
-assert.equal(resolveAutomaticImageReferenceLimit({ imageService: "xai" }, 6), 6);
+for (const service of ["openai", "xai"]) {
+  for (const existingLimit of [1, 4, 6, 16, 20]) {
+    assert.equal(
+      resolveAutomaticImageReferenceLimit({ model: CODEX_CHATGPT_IMAGE_MODEL, imageService: service }, existingLimit),
+      existingLimit,
+    );
+  }
+}
 
 for (const [source, model, service, expected] of [
-  ["gpt-image-2", "gpt-image-2", "codex_chatgpt", 5],
-  ["codex_chatgpt", "gpt-image-2", undefined, 5],
+  ["gpt-image-2", "gpt-image-2", "codex_chatgpt", 16],
+  ["codex_chatgpt", "gpt-image-2", undefined, 16],
   ["openai", "gpt-image-2", "openai", 16],
   ["openrouter", "gpt-image-2", "openrouter", 16],
   ["novelai", "nai-diffusion-4-5-full", "novelai", 16],
@@ -382,7 +394,7 @@ for (const [source, model, service, expected] of [
     for (const location of [null, "location-reference"]) {
       assert.deepEqual(
         mergeSpatialLocationReferenceImages(location, characterCandidates, limit),
-        location ? [location, ...characterCandidates.slice(0, 4)] : characterCandidates.slice(0, 5),
+        location ? [location, ...characterCandidates.slice(0, 15)] : characterCandidates.slice(0, 16),
       );
     }
   }
@@ -404,6 +416,17 @@ const selfieSource = readFileSync(
   "utf8",
 );
 assert.match(selfieSource, /maxReferences: resolveAutomaticImageReferenceLimit\(imgConnFull, 6\)/u);
+const gallerySource = readFileSync(new URL("../../packages/server/src/routes/gallery.routes.ts", import.meta.url), "utf8");
+assert.match(gallerySource, /maxReferences: 1/u, "Gallery Selfie retains its one-reference limit");
+const characterSource = readFileSync(
+  new URL("../../packages/server/src/routes/characters.routes.ts", import.meta.url),
+  "utf8",
+);
+assert.match(
+  characterSource,
+  /function avatarGenerationReferenceImages\([\s\S]{0,400}\.slice\(0, 4\)/u,
+  "Avatar and Character Sheet retain their four-reference limit",
+);
 const gameSource = readFileSync(new URL("../../packages/server/src/routes/game.routes.ts", import.meta.url), "utf8");
 assert.equal(
   gameSource.match(

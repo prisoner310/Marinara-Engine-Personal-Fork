@@ -4,13 +4,13 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- ChatGPT / Codex Image automatic reference selection now respects the provider's five-image limit, including location references.
+- ChatGPT / Codex Image now supports up to 16 reference images where Marinara workflows provide them, based on verified OAuth image endpoint behavior. Automatic selection retains each workflow's own limit, including location references.
 - ChatGPT / Codex Image now explains that requested dimensions guide the aspect ratio while output pixel size can differ, and shows its canvas guidance separately during prompt review.
 - ChatGPT / Codex Image reference edits now let the main prompt define each reference image's purpose; the connection's added guidance only prevents copying a reference's canvas shape.
 - ChatGPT / Codex Image now adds the requested canvas orientation and aspect ratio to image prompts. Reference edits also avoid copying the source canvas shape; Sprite prompts keep their existing layout instructions.
 - ChatGPT / Codex Image debug logs now show the requested, sent, declared, and actual PNG sizes for generation and edits, so size mismatches can be diagnosed without exposing prompts or image data.
 - ChatGPT / Codex Image now sends requested image dimensions and transparent background settings for generation and edits. Sprite prompts request native transparency through this connection without chroma instructions, while other providers keep their existing fallback. Background cleanup preserves PNGs that already have alpha, even when the AI cleanup engine is configured.
-- ChatGPT / Codex Image now edits images when given up to five references, while text-only requests keep the existing generation path. Oversized or invalid reference sets return clear errors.
+- ChatGPT / Codex Image now edits images when given up to 16 references, while text-only requests keep the existing generation path. Oversized or invalid reference sets return clear Marinara connection errors.
 - Added a ChatGPT / Codex Image connection that generates one text-to-image result with the local `codex login` session, without an OpenAI API key. Its connection check validates the login without generating an image.
 - Consolidated root coding-agent guidance in `AGENTS.md` and updated contributor and reviewer references after removing the duplicate `CLAUDE.md`. Removed the obsolete `MARI_SUGGESTION_CHIPS_TASK.md` implementation brief (#6504).
 

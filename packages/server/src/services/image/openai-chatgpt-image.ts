@@ -134,7 +134,7 @@ function editReferences(request: ImageGenRequest): Array<{ image_url: string }> 
   const imageUrls = [...new Set(references.map(referenceImageDataUrl))];
   if (imageUrls.length > CODEX_CHATGPT_MAX_REFERENCE_IMAGES) {
     throw new Error(
-      `ChatGPT/Codex image editing supports up to ${CODEX_CHATGPT_MAX_REFERENCE_IMAGES} reference images, but ${imageUrls.length} were provided.`,
+      `Marinara's ChatGPT/Codex image connection supports up to ${CODEX_CHATGPT_MAX_REFERENCE_IMAGES} reference images, but ${imageUrls.length} were provided.`,
     );
   }
   return imageUrls.map((image_url) => ({ image_url }));
